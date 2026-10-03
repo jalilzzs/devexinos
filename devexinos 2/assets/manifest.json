@@ -1,0 +1,14 @@
+{
+  "models": {
+    "entity_devexinos": "models/entity/devexinos.glb",
+    "protagonist": "models/protagonist/fred.glb",
+    "furniture_bed_bedroom": "models/furniture/bed.glb",
+    "item_key1": "models/items/rusted_key.glb"
+  },
+  "audio": {
+    "sfx_door": "audio/sfx/door.ogg",
+    "sfx_whisper": "audio/sfx/whisper.ogg",
+    "bgm_main": "audio/bgm/main.mp3",
+    "bgm_chase": "audio/bgm/chase.mp3"
+  }
+}
