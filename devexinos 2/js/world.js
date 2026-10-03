@@ -8,7 +8,7 @@ let renderer,scene,camera,flash;
    Coordinates: x east, z south, y up. Hall = x[-2,2]. West rooms x[-9,-2],
    east rooms x[2,9]. Basement lives far away at x 50..70 (separate level).
    ===================================================================== */
-const COL=[],IN=[],PROPS={},ROOM={},ANIMS=[],ITEMG={},MAPS={},ENTV=[],ENTMIX=[],LOCKERS=[];
+const COL=[],IN=[],PROPS={},ROOM={},ANIMS=[],ITEMG={},MAPS={},ENTV=[],ENTMIX=[],LOCKERS=[],SHELL=[];
 let TEX={},MC={},worldReady=false,curRoom='hall',HMAT,hemi,lamps=[],fireLight,bodyG,dust,rcast;
 const DOCS=['j1','j2','j3','letter','note'];
 const W={}; // named world objects (doors, panels...) for puzzles/animation
@@ -48,14 +48,14 @@ function bg(w,h,d,s=2.5){const g=new THREE.BoxGeometry(w,h,d),uv=g.attributes.uv
   for(let f=0;f<6;f++)for(let i=0;i<4;i++){const k=f*4+i;uv.setXY(k,uv.getX(k)*D[f][0]/s,uv.getY(k)*D[f][1]/s)}return g}
 function plane(x1,z1,x2,z2,y,m,up=true){const w=x2-x1,d=z2-z1,g=new THREE.PlaneGeometry(w,d),uv=g.attributes.uv;
   for(let i=0;i<uv.count;i++)uv.setXY(i,uv.getX(i)*w/2.5,uv.getY(i)*d/2.5);
-  const p=new THREE.Mesh(g,m);p.rotation.x=up?-Math.PI/2:Math.PI/2;p.position.set((x1+x2)/2,y,(z1+z2)/2);p.receiveShadow=true;scene.add(p);return p}
+  const p=new THREE.Mesh(g,m);p.rotation.x=up?-Math.PI/2:Math.PI/2;p.position.set((x1+x2)/2,y,(z1+z2)/2);p.receiveShadow=true;scene.add(p);SHELL.push(p);return p}
 
 /* ---------- builders ---------- */
 function setRoom(n){curRoom=n;if(!ROOM[n]){ROOM[n]=new THREE.Group();scene.add(ROOM[n])}}
 function G(x,y,z,ry=0,id=null,room=curRoom){const g=new THREE.Group();g.position.set(x,y,z);g.rotation.y=ry;(ROOM[room]||scene).add(g);if(id)PROPS[id]=g;return g}
 function B(g,w,h,d,px,py,pz,m,cast=true){const b=new THREE.Mesh(bg(w,h,d),m);b.position.set(px,py+h/2,pz);b.castShadow=cast;b.receiveShadow=true;g.add(b);return b}
 function Cy(g,r,h,px,py,pz,m,seg=10){const c=new THREE.Mesh(new THREE.CylinderGeometry(r,r,h,seg),m);c.position.set(px,py+h/2,pz);c.castShadow=true;g.add(c);return c}
-function seg(x1,z1,x2,z2,y0,h,m,collide=true){const b=new THREE.Mesh(bg(x2-x1,h,z2-z1),m);b.position.set((x1+x2)/2,y0+h/2,(z1+z2)/2);b.castShadow=b.receiveShadow=true;scene.add(b);if(collide)col(x1,z1,x2,z2,y0+h);return b}
+function seg(x1,z1,x2,z2,y0,h,m,collide=true){const b=new THREE.Mesh(bg(x2-x1,h,z2-z1),m);b.position.set((x1+x2)/2,y0+h/2,(z1+z2)/2);b.castShadow=b.receiveShadow=true;scene.add(b);if(collide)col(x1,z1,x2,z2,y0+h);SHELL.push(b);return b}
 function wallZ(x,za,zb,gaps=[],m=W.wall,h=3.2){let a=za;for(const [g1,g2] of gaps){if(g1>a)seg(x-.15,a,x+.15,g1,0,h,m);seg(x-.15,g1,x+.15,g2,2.4,h-2.4,m,false);a=g2}if(zb>a)seg(x-.15,a,x+.15,zb,0,h,m)}
 function wallX(z,xa,xb,gaps=[],m=W.wall,h=3.2){let a=xa;for(const [g1,g2] of gaps){if(g1>a)seg(a,z-.15,g1,z+.15,0,h,m);seg(g1,z-.15,g2,z+.15,2.4,h-2.4,m,false);a=g2}if(xb>a)seg(a,z-.15,xb,z+.15,0,h,m)}
 function candle(g,x,y,z){Cy(g,.03,.14,x,y,z,mat(0xd8cdb4));const f=new THREE.Mesh(new THREE.SphereGeometry(.03,6,6),new THREE.MeshBasicMaterial({color:0xffb85a}));f.position.set(x,y+.17,z);g.add(f)}
@@ -242,6 +242,9 @@ function buildWorld(){
 
   /* ---------------- LIGHTING / ENV ---------------- */
   hemi=new THREE.HemisphereLight(0x303050,0x181010,.5);scene.add(hemi);
+  // إضافة إضاءة محيطية شاملة لتجنب ظهور الموديلات مظلمة تماماً
+  const ambLight = new THREE.AmbientLight(0xffffff, 0.6);scene.add(ambLight);
+
   flash=new THREE.SpotLight(0xfff0c8,1.8,16,.5,.55,1.2);flash.position.set(0,0,0);flash.target.position.set(0,0,-1);camera.add(flash,flash.target);
   for(let i=0;i<3;i++){const l=new THREE.PointLight(0xffc27a,0,9,2);scene.add(l);lamps.push(l)}
   fireLight=new THREE.PointLight(0xff7a22,0,10,2);scene.add(fireLight);
@@ -253,11 +256,11 @@ function buildWorld(){
   [0,1].forEach(()=>{const v=new THREE.Group();v.add(makeEntityModel());v.visible=false;scene.add(v);ENTV.push(v)});
   buildNav();
 
-  /* ---------------- CUSTOM GLB MODELS LOADING ---------------- */
+  /* ---------------- CUSTOM GLB MODELS LOADING (MODIFIED & FIXED) ---------------- */
   if (typeof THREE.GLTFLoader !== 'undefined') {
     const gltfLoader = new THREE.GLTFLoader();
     const customAssets = [
-      { file: 'assets/house_corridor_interior.glb', pos: [0, 0, -2], scale: 1 },
+      { file: 'assets/house_corridor_interior.glb', pos: [0, 0, -2], scale: 1, hideShell: true },
       { file: 'assets/old_room.glb',                 pos: [-5.5, 0, 6], scale: 1 },
       { file: 'assets/old_living_room.glb',          pos: [5.5, 0, 6], scale: 1 },
       { file: 'assets/horror_scene.glb',             pos: [5.5, 0, -10], scale: 1 }
@@ -267,21 +270,44 @@ function buildWorld(){
       gltfLoader.load(
         item.file,
         (gltf) => {
+          console.log('✅ تم تحميل المجسم بنجاح:', item.file);
           const model = gltf.scene;
           model.position.set(item.pos[0], item.pos[1], item.pos[2]);
-          model.scale.set(item.scale, item.scale, item.scale);
+          model.scale.setScalar(item.scale);
+
           model.traverse((child) => {
             if (child.isMesh) {
               child.castShadow = true;
               child.receiveShadow = true;
+              child.frustumCulled = false; // لمنع اختفاء المجسم عند زوايا الكاميرا
+              if (child.material) {
+                child.material.side = THREE.DoubleSide; // جعل الأوجه تظهر من الداخل والخارج
+                child.material.metalness = 0;          // منع اللون الأسود القاتم
+                child.material.roughness = 1;
+                if (child.material.map && THREE.sRGBEncoding) {
+                  child.material.map.encoding = THREE.sRGBEncoding;
+                }
+              }
             }
           });
+
           scene.add(model);
+
+          // إخفاء الجدران والأرضيات القديمة إن طُلب ذلك لتفادي التداخل
+          if (item.hideShell) {
+            SHELL.forEach(m => m.visible = false);
+          }
         },
-        undefined,
-        (err) => console.error('Error loading model:', item.file, err)
+        (progress) => {
+          if (progress.total > 0) {
+            console.log(`⏳ تحميل ${item.file}: ${((progress.loaded / progress.total) * 100).toFixed(0)}%`);
+          }
+        },
+        (err) => console.error('❌ فشل تحميل المجسم:', item.file, err)
       );
     });
+  } else {
+    console.error('❌ GLTFLoader غير معرّف! تأكد من استدعاء المكتبة في index.html');
   }
 
   worldReady=true;applyAllModels();
