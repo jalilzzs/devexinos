@@ -251,7 +251,40 @@ function buildWorld(){
 
   /* ---------------- ENTITIES ---------------- */
   [0,1].forEach(()=>{const v=new THREE.Group();v.add(makeEntityModel());v.visible=false;scene.add(v);ENTV.push(v)});
-  buildNav();worldReady=true;applyAllModels();
+  buildNav();
+
+  /* ---------------- CUSTOM GLB MODELS LOADING ---------------- */
+  if (typeof THREE.GLTFLoader !== 'undefined') {
+    const gltfLoader = new THREE.GLTFLoader();
+    const customAssets = [
+      { file: 'assets/house_corridor_interior.glb', pos: [0, 0, -2], scale: 1 },
+      { file: 'assets/old_room.glb',                 pos: [-5.5, 0, 6], scale: 1 },
+      { file: 'assets/old_living_room.glb',          pos: [5.5, 0, 6], scale: 1 },
+      { file: 'assets/horror_scene.glb',             pos: [5.5, 0, -10], scale: 1 }
+    ];
+
+    customAssets.forEach(item => {
+      gltfLoader.load(
+        item.file,
+        (gltf) => {
+          const model = gltf.scene;
+          model.position.set(item.pos[0], item.pos[1], item.pos[2]);
+          model.scale.set(item.scale, item.scale, item.scale);
+          model.traverse((child) => {
+            if (child.isMesh) {
+              child.castShadow = true;
+              child.receiveShadow = true;
+            }
+          });
+          scene.add(model);
+        },
+        undefined,
+        (err) => console.error('Error loading model:', item.file, err)
+      );
+    });
+  }
+
+  worldReady=true;applyAllModels();
 }
 
 
@@ -284,4 +317,3 @@ function initScene(){
   rcast=new THREE.Raycaster();rcast.far=3;
   buildWorld();setEnv('house');applyGfx();refreshWorld();
 }
-
