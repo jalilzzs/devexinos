@@ -85,7 +85,7 @@ async function fuseDoll(){
 async function burnRitual(){
   locked=true;say('m_burn1',3000);sfx('fire');W.fireG.visible=true;fireLight.color.set(0xff7a22);fireLight.position.set(58,1.6,-3);boost(.8,12);
   await wait(3200);shake=1.5;sfx('growl');say('m_burn2',4500);
-  anim(5000,p=>{shake=1.2*(1-p);W.doll.scale.setScalar(2.2*(1-p))});await wait(5200);sfx('scare');
+  anim(5000,p=>{shake=1.2*(1-p);W.doll.scale.setScalar((W.dollS||2.2)*(1-p))});await wait(5200);sfx('scare');
   W.doll.visible=false;ent.on=false;state.f.burned=1;addLog('burn');await wait(1200);say('m_after',5000);
   anim(4000,p=>{fireLight.userData.k=1-p*.6},null);locked=false;refreshWorld();saveGame();
 }
