@@ -8,7 +8,7 @@ let renderer,scene,camera,flash;
    Coordinates: x east, z south, y up. Hall = x[-2,2]. West rooms x[-9,-2],
    east rooms x[2,9]. Basement lives far away at x 50..70 (separate level).
    ===================================================================== */
-const COL=[],IN=[],PROPS={},ROOM={},ANIMS=[],ITEMG={},MAPS={},ENTV=[],ENTMIX=[],LOCKERS=[],SHELL=[];
+const COL=[],IN=[],PROPS={},ROOM={},ANIMS=[],ITEMG={},MAPS={},ENTV=[],ENTMIX=[],LOCKERS=[];
 let TEX={},MC={},worldReady=false,curRoom='hall',HMAT,hemi,lamps=[],fireLight,bodyG,dust,rcast;
 const DOCS=['j1','j2','j3','letter','note'];
 const W={}; // named world objects (doors, panels...) for puzzles/animation
@@ -48,14 +48,14 @@ function bg(w,h,d,s=2.5){const g=new THREE.BoxGeometry(w,h,d),uv=g.attributes.uv
   for(let f=0;f<6;f++)for(let i=0;i<4;i++){const k=f*4+i;uv.setXY(k,uv.getX(k)*D[f][0]/s,uv.getY(k)*D[f][1]/s)}return g}
 function plane(x1,z1,x2,z2,y,m,up=true){const w=x2-x1,d=z2-z1,g=new THREE.PlaneGeometry(w,d),uv=g.attributes.uv;
   for(let i=0;i<uv.count;i++)uv.setXY(i,uv.getX(i)*w/2.5,uv.getY(i)*d/2.5);
-  const p=new THREE.Mesh(g,m);p.rotation.x=up?-Math.PI/2:Math.PI/2;p.position.set((x1+x2)/2,y,(z1+z2)/2);p.receiveShadow=true;scene.add(p);SHELL.push(p);return p}
+  const p=new THREE.Mesh(g,m);p.rotation.x=up?-Math.PI/2:Math.PI/2;p.position.set((x1+x2)/2,y,(z1+z2)/2);p.receiveShadow=true;scene.add(p);return p}
 
 /* ---------- builders ---------- */
 function setRoom(n){curRoom=n;if(!ROOM[n]){ROOM[n]=new THREE.Group();scene.add(ROOM[n])}}
 function G(x,y,z,ry=0,id=null,room=curRoom){const g=new THREE.Group();g.position.set(x,y,z);g.rotation.y=ry;(ROOM[room]||scene).add(g);if(id)PROPS[id]=g;return g}
 function B(g,w,h,d,px,py,pz,m,cast=true){const b=new THREE.Mesh(bg(w,h,d),m);b.position.set(px,py+h/2,pz);b.castShadow=cast;b.receiveShadow=true;g.add(b);return b}
 function Cy(g,r,h,px,py,pz,m,seg=10){const c=new THREE.Mesh(new THREE.CylinderGeometry(r,r,h,seg),m);c.position.set(px,py+h/2,pz);c.castShadow=true;g.add(c);return c}
-function seg(x1,z1,x2,z2,y0,h,m,collide=true){const b=new THREE.Mesh(bg(x2-x1,h,z2-z1),m);b.position.set((x1+x2)/2,y0+h/2,(z1+z2)/2);b.castShadow=b.receiveShadow=true;scene.add(b);if(collide)col(x1,z1,x2,z2,y0+h);SHELL.push(b);return b}
+function seg(x1,z1,x2,z2,y0,h,m,collide=true){const b=new THREE.Mesh(bg(x2-x1,h,z2-z1),m);b.position.set((x1+x2)/2,y0+h/2,(z1+z2)/2);b.castShadow=b.receiveShadow=true;scene.add(b);if(collide)col(x1,z1,x2,z2,y0+h);return b}
 function wallZ(x,za,zb,gaps=[],m=W.wall,h=3.2){let a=za;for(const [g1,g2] of gaps){if(g1>a)seg(x-.15,a,x+.15,g1,0,h,m);seg(x-.15,g1,x+.15,g2,2.4,h-2.4,m,false);a=g2}if(zb>a)seg(x-.15,a,x+.15,zb,0,h,m)}
 function wallX(z,xa,xb,gaps=[],m=W.wall,h=3.2){let a=xa;for(const [g1,g2] of gaps){if(g1>a)seg(a,z-.15,g1,z+.15,0,h,m);seg(g1,z-.15,g2,z+.15,2.4,h-2.4,m,false);a=g2}if(xb>a)seg(a,z-.15,xb,z+.15,0,h,m)}
 function candle(g,x,y,z){Cy(g,.03,.14,x,y,z,mat(0xd8cdb4));const f=new THREE.Mesh(new THREE.SphereGeometry(.03,6,6),new THREE.MeshBasicMaterial({color:0xffb85a}));f.position.set(x,y+.17,z);g.add(f)}
@@ -233,8 +233,8 @@ function buildWorld(){
   const pipe=new THREE.Mesh(new THREE.CylinderGeometry(.08,.08,16,8),metal);pipe.rotation.z=Math.PI/2;pipe.position.set(58,2.5,7.6);scene.add(pipe);
 
   /* ---------------- ITEMS ---------------- */
-  addItem('passport',-8.55,.6,6,'house');addItem('id_card',-4,.9,9.55,'house');addItem('j1',-7.4,.6,8.9,'house');
-  addItem('j3',-7.5,.81,-3.5,'house');addItem('j2',4.5,.81,9.55,'house');addItem('letter',7,.6,8.6,'house');
+  addItem('passport',-8.55,.6,5.85,'house');addItem('id_card',-4,.9,9.55,'house');addItem('j1',-8.55,.6,6.15,'house');
+  addItem('j3',-7.5,.81,-3.5,'house');addItem('j2',4.5,.81,9.55,'house');addItem('letter',8.55,.9,4.6,'house');
   addItem('music_box',8.55,.9,5,'house');addItem('fuse2',6,.02,8.6,'house');addItem('fuse1',-8.4,.9,-8,'house');addItem('note',-5,.81,-9.5,'house');
   addItem('key1',6.5,.6,1.3,'house');addItem('key2',8.1,.02,1,'house');
   addItem('head',-5.5,1.15,-5.55,'house',()=>state.f.safe);addItem('arms',-8,.82,-13,'house',()=>state.f.store);
@@ -242,9 +242,6 @@ function buildWorld(){
 
   /* ---------------- LIGHTING / ENV ---------------- */
   hemi=new THREE.HemisphereLight(0x303050,0x181010,.5);scene.add(hemi);
-  // إضافة إضاءة محيطية شاملة لتجنب ظهور الموديلات مظلمة تماماً
-  const ambLight = new THREE.AmbientLight(0xffffff, 0.6);scene.add(ambLight);
-
   flash=new THREE.SpotLight(0xfff0c8,1.8,16,.5,.55,1.2);flash.position.set(0,0,0);flash.target.position.set(0,0,-1);camera.add(flash,flash.target);
   for(let i=0;i<3;i++){const l=new THREE.PointLight(0xffc27a,0,9,2);scene.add(l);lamps.push(l)}
   fireLight=new THREE.PointLight(0xff7a22,0,10,2);scene.add(fireLight);
@@ -254,63 +251,9 @@ function buildWorld(){
 
   /* ---------------- ENTITIES ---------------- */
   [0,1].forEach(()=>{const v=new THREE.Group();v.add(makeEntityModel());v.visible=false;scene.add(v);ENTV.push(v)});
-  buildNav();
-
-  /* ---------------- CUSTOM GLB MODELS LOADING (MODIFIED & FIXED) ---------------- */
-  if (typeof THREE.GLTFLoader !== 'undefined') {
-    const gltfLoader = new THREE.GLTFLoader();
-    const customAssets = [
-      { file: 'assets/house_corridor_interior.glb', pos: [0, 0, -2], scale: 1, hideShell: true },
-      { file: 'assets/old_room.glb',                 pos: [-5.5, 0, 6], scale: 1 },
-      { file: 'assets/old_living_room.glb',          pos: [5.5, 0, 6], scale: 1 },
-      { file: 'assets/horror_scene.glb',             pos: [5.5, 0, -10], scale: 1 }
-    ];
-
-    customAssets.forEach(item => {
-      gltfLoader.load(
-        item.file,
-        (gltf) => {
-          console.log('✅ تم تحميل المجسم بنجاح:', item.file);
-          const model = gltf.scene;
-          model.position.set(item.pos[0], item.pos[1], item.pos[2]);
-          model.scale.setScalar(item.scale);
-
-          model.traverse((child) => {
-            if (child.isMesh) {
-              child.castShadow = true;
-              child.receiveShadow = true;
-              child.frustumCulled = false; // لمنع اختفاء المجسم عند زوايا الكاميرا
-              if (child.material) {
-                child.material.side = THREE.DoubleSide; // جعل الأوجه تظهر من الداخل والخارج
-                child.material.metalness = 0;          // منع اللون الأسود القاتم
-                child.material.roughness = 1;
-                if (child.material.map && THREE.sRGBEncoding) {
-                  child.material.map.encoding = THREE.sRGBEncoding;
-                }
-              }
-            }
-          });
-
-          scene.add(model);
-
-          // إخفاء الجدران والأرضيات القديمة إن طُلب ذلك لتفادي التداخل
-          if (item.hideShell) {
-            SHELL.forEach(m => m.visible = false);
-          }
-        },
-        (progress) => {
-          if (progress.total > 0) {
-            console.log(`⏳ تحميل ${item.file}: ${((progress.loaded / progress.total) * 100).toFixed(0)}%`);
-          }
-        },
-        (err) => console.error('❌ فشل تحميل المجسم:', item.file, err)
-      );
-    });
-  } else {
-    console.error('❌ GLTFLoader غير معرّف! تأكد من استدعاء المكتبة في index.html');
-  }
-
-  worldReady=true;applyAllModels();
+  W.dollS=2.2;
+  ['nightstand_bedroom','dresser_bedroom','desk_study','table_kitchen','counter_kitchen','table_store','dresser_amira','vanity_amira','table_gallery','safe_study','altar_chapel','fusebox','table_ritual','pedestal_torso','door_basement','door_front','locker_gallery1','locker_gallery2'].forEach(id=>{if(PROPS[id])PROPS[id].userData.host=true});
+  buildNav();worldReady=true;applyAllModels();
 }
 
 
@@ -328,7 +271,7 @@ function syncDoors(){
   W.storeDoor.position.x=-7.7-(f.store?1:0);W.storeCol.on=!f.store;
   W.safeDoor.rotation.y=f.safe?-1.9:0;W.slab.position.x=f.altar?2:0;
   W.torsoDoor.position.y=1.3+(f.torsoDoor?2.8:0);W.torsoCol.on=!f.torsoDoor;
-  W.doll.visible=!!f.doll&&!f.burned;W.doll.position.y=.92+(f.doll?.35:0);W.doll.scale.setScalar(2.2);
+  W.doll.visible=!!f.doll&&!f.burned;W.doll.position.y=.92+(f.doll?.35:0);W.doll.scale.setScalar(W.dollS||2.2);
   W.fireG.visible=false;W.frontDoor.position.x=0;W.frontCol.on=true;W.sun.visible=false;W.rug.visible=true;W.hatch.visible=false;
   ent.on=!f.burned;
 }
@@ -338,8 +281,155 @@ function syncDoors(){
 function initScene(){
   if(renderer||!hasThree)return;
   renderer=new THREE.WebGLRenderer({canvas:el('c'),antialias:S.gfx==='high',powerPreference:'high-performance'});
-  renderer.shadowMap.type=THREE.PCFSoftShadowMap;
+  renderer.shadowMap.type=THREE.PCFSoftShadowMap;renderer.localClippingEnabled=true;
   scene=new THREE.Scene();camera=new THREE.PerspectiveCamera(70,innerWidth/innerHeight,.05,40);camera.rotation.order='YXZ';scene.add(camera);
   rcast=new THREE.Raycaster();rcast.far=3;
-  buildWorld();setEnv('house');applyGfx();refreshWorld();
+  buildWorld();setEnv('house');applyGfx();refreshWorld();loadDressing();
 }
+
+
+
+/* =====================================================================
+   MODEL DRESSING: your GLB rooms (assets/models/*.glb)
+   ---------------------------------------------------------------------
+   The procedural mansion stays as the game's skeleton (walls, collisions,
+   doors, puzzles). Each model below DRESSES one room: its floor and props are
+   shown, its own walls/ceiling are hidden (the mansion's walls are used), and
+   the procedural furniture is hidden, except "host" pieces that carry items or
+   puzzles (nightstand, desk, safe, altar, fuse box...).
+   Tuning knobs per entry:  scale (metres per model unit), align ('east' =
+   toward the hall for west rooms, 'west' for east rooms), rotate ('auto'),
+   hideNames (regex of node names to hide), hideShell (auto-hide walls and
+   ceiling), gain (brightness boost), heavy (skipped on Medium graphics).
+   Live tweak from the browser console:  DVX.apply('bedroom',{scale:0.012})
+   ===================================================================== */
+const MODEL_DIR='assets/models/';
+const ROOMRECT={bedroom:[-8.85,2.15,-2.15,9.85],study:[-8.85,-5.85,-2.15,1.85],kitchen:[-8.85,-13.85,-2.15,-6.15],amira:[2.15,2.15,8.85,9.85],hall:[-1.85,-13.85,1.85,9.85]};
+const MODEL_PLAN=[
+  /* long loop corridor -> the hall. Straight 109-unit section (model x 27.7..136.7, z -209.6..-197.9) is rotated onto the hall's N-S axis and clipped to the hall.
+     Its modular wall pieces are named "duvar*" (Turkish for wall): hidden, the mansion's wallpaper walls are used. 1 model unit = 0.316 m here. */
+  {id:'hall',file:'house_corridor_interior.glb',kind:'strip',room:'hall',strip:{x1:27.7,z1:-209.6,x2:136.7,z2:-197.9},floorY:4.8,width:3.7,hideNames:/duvar/i,keepDecor:true,gain:1.7},
+  /* old_room: units are centimetres -> 0.01 */
+  {id:'bedroom',file:'old_room.glb',kind:'room',room:'bedroom',scale:0.01,align:'east',hideShell:true,gain:1.8},
+  /* old_living_room: ceiling ~154 units ~ 3.1 m -> 0.02 */
+  {id:'study',file:'old_living_room.glb',kind:'room',room:'study',scale:0.02,align:'east',hideShell:true,gain:1.8,heavy:true},
+  /* an_old_cheap_room_in_chinatown: already in metres; rotated to fit if that helps */
+  {id:'amira',file:'an_old_cheap_room_in_chinatown.glb',kind:'room',room:'amira',scale:1,align:'west',rotate:'auto',hideShell:true,gain:1.6,heavy:true},
+  /* horror_scene: a low-poly house shell + TV, table, hanging light, gas tank, crates (~0.003 m per unit). The "house" shell is hidden. */
+  {id:'kitchen',file:'horror_scene.glb',kind:'room',room:'kitchen',scale:0.003,align:'east',hideNames:/house/i,gain:1.8},
+  /* nameless_doll: replaces the four floating doll parts on the ritual table */
+  {id:'doll',file:'nameless_doll.glb',kind:'doll',length:1.1,gain:1.6}
+];
+const DRESS={status:{},gltf:{},roots:{},busy:false,t:0};
+const V3=()=>new THREE.Vector3();
+function loadDressing(){
+  if(!worldReady||!hasThree||!THREE.GLTFLoader)return;
+  const loader=new THREE.GLTFLoader();
+  MODEL_PLAN.forEach(plan=>{
+    const st=DRESS.status[plan.id];if(st==='ok'||st==='loading')return;
+    if(plan.heavy&&S.gfx!=='high'){DRESS.status[plan.id]='skipped (Medium graphics)';return}
+    DRESS.status[plan.id]='loading';
+    loader.load(MODEL_DIR+plan.file,g=>{
+      DRESS.gltf[plan.id]=g;
+      try{dressApply(plan,g);DRESS.status[plan.id]='ok'}catch(e){DRESS.status[plan.id]='error: '+e.message;console.error('[DVX] dressing '+plan.id,e)}
+      dressReport();
+    },null,err=>{
+      DRESS.status[plan.id]='failed to load '+MODEL_DIR+plan.file+(location.protocol==='file:'?' (open the game through http://, not file://)':' (check the path and upper/lower case)');
+      console.error('[DVX] '+plan.file,err);dressReport();
+    });
+  });
+}
+function dressReport(){
+  const ids=MODEL_PLAN.map(p=>p.id),ok=ids.filter(i=>DRESS.status[i]==='ok').length,pending=ids.filter(i=>DRESS.status[i]==='loading').length,bad=ids.filter(i=>/^(failed|error)/.test(DRESS.status[i]||''));
+  console.log('[DVX] models',DRESS.status);
+  if(!pending)toast('Models: '+ok+'/'+ids.length+' loaded'+(bad.length?' · see console (F12)':''));
+}
+function nameMatch(obj,re){for(let o=obj;o;o=o.parent){if(o.name&&re.test(o.name))return true}return false}
+function measure(root){
+  root.updateMatrixWorld(true);
+  const meshes=[];root.traverse(m=>{if(m.isMesh&&m.visible)meshes.push(m)});
+  const U=new THREE.Box3();meshes.forEach(m=>U.expandByObject(m));
+  const us=U.getSize(V3());let floor=null,fa=0;
+  meshes.forEach(m=>{const b=new THREE.Box3().setFromObject(m),sz=b.getSize(V3());
+    if(sz.y<=Math.max(.08,us.y*.04)&&b.min.y<=U.min.y+us.y*.15){const a=sz.x*sz.z;if(a>fa){fa=a;floor=b}}});
+  return {meshes,U,us,F:floor||U};
+}
+function dressMaterials(root,o,planes){
+  const gain=o.gain||1.7;
+  root.traverse(m=>{
+    if(!m.isMesh)return;m.castShadow=false;m.receiveShadow=true;
+    (Array.isArray(m.material)?m.material:[m.material]).forEach(mt=>{
+      if(!mt)return;
+      mt.side=THREE.DoubleSide;if(mt.metalness>.5)mt.metalness=.25;               // no env-map in this scene: metal would render black
+      const col=mt.color||(mt.uniforms&&mt.uniforms.diffuse&&mt.uniforms.diffuse.value);
+      if(col&&!mt.userData.gained){col.multiplyScalar(gain);mt.userData.gained=1}  // sRGB textures + linear output + dim lights: lift them
+      if(planes){mt.clippingPlanes=planes;mt.clipShadows=true}
+      mt.needsUpdate=true;
+    });
+  });
+}
+function hideDecor(room,keep){
+  if(keep||!ROOM[room])return;
+  ROOM[room].children.forEach(g=>{if(!g.userData.host)g.visible=false});
+}
+function dressApply(plan,gltf,over){
+  const o=Object.assign({},plan,over||{}),root=gltf.scene;
+  if(DRESS.roots[o.id]&&DRESS.roots[o.id]!==root)scene.remove(DRESS.roots[o.id]);
+  root.position.set(0,0,0);root.rotation.set(0,0,0);root.scale.setScalar(1);
+  root.traverse(m=>{if(m.isMesh)m.visible=true});
+  if(o.kind==='strip')dressStrip(o,root);else if(o.kind==='doll')dressDoll(o,root);else dressRoom(o,root);
+  DRESS.roots[o.id]=root;
+}
+function dressRoom(o,root){
+  const rect=ROOMRECT[o.room],rw=rect[2]-rect[0]-.1,rd=rect[3]-rect[1]-.1;
+  root.scale.setScalar(o.scale||1);
+  root.traverse(m=>{if(m.isMesh&&o.hideNames&&nameMatch(m,o.hideNames))m.visible=false});
+  let M=measure(root);
+  if(o.rotate==='auto'){const sx=M.F.getSize(V3()),f0=Math.min(rw/sx.x,rd/sx.z),f90=Math.min(rw/sx.z,rd/sx.x);if(f90>f0){root.rotation.y=Math.PI/2;M=measure(root)}}
+  const fs=M.F.getSize(V3()),fit=Math.min(rw/fs.x,rd/fs.z);
+  if(fit<1){root.scale.multiplyScalar(fit*.98);M=measure(root)}                    // never bigger than the room
+  const fc=M.F.getCenter(V3()),fz=M.F.getSize(V3()),cx=(rect[0]+rect[2])/2,cz=(rect[1]+rect[3])/2;
+  let tx=cx;if(o.align==='east')tx=rect[2]-.05-fz.x/2;else if(o.align==='west')tx=rect[0]+.05+fz.x/2;
+  root.position.set(tx-fc.x,.03-M.F.min.y,cz-fc.z);
+  M=measure(root);
+  if(o.hideShell){                                                                  // hide the model's own walls and ceiling
+    M.meshes.forEach(m=>{const b=new THREE.Box3().setFromObject(m),sz=b.getSize(V3()),us=M.us;
+      const wall=sz.y>=us.y*.5&&((sz.x<=us.x*.06&&sz.z>=us.z*.35)||(sz.z<=us.z*.06&&sz.x>=us.x*.35));
+      const ceil=sz.y<=us.y*.05&&b.min.y>=M.U.min.y+us.y*.75&&sz.x>=us.x*.35&&sz.z>=us.z*.35;
+      if(wall||ceil)m.visible=false})}
+  dressMaterials(root,o,null);
+  scene.add(root);root.userData.center=[M.F.getCenter(V3()).x,M.F.getCenter(V3()).z];root.userData.room=o.room;
+  hideDecor(o.room,o.keepDecor);
+  console.log('[DVX] '+o.id+': scale',root.scale.x.toFixed(4),'floor',M.F.getSize(V3()).toArray().map(v=>+v.toFixed(2)),'at',root.position.toArray().map(v=>+v.toFixed(2)));
+}
+function dressStrip(o,root){
+  const st=o.strip,s=o.width/(st.z2-st.z1),cx=(st.x1+st.x2)/2,cz=(st.z1+st.z2)/2;
+  root.scale.setScalar(s);root.rotation.y=-Math.PI/2;                                // model +x -> hall +z (south)
+  root.position.set(cz*s,.03-o.floorY*s,-2-cx*s);
+  root.traverse(m=>{if(m.isMesh&&o.hideNames&&nameMatch(m,o.hideNames))m.visible=false});
+  const planes=[new THREE.Plane(new THREE.Vector3(1,0,0),1.95),new THREE.Plane(new THREE.Vector3(-1,0,0),1.95),new THREE.Plane(new THREE.Vector3(0,0,1),13.9),new THREE.Plane(new THREE.Vector3(0,0,-1),9.9)];
+  dressMaterials(root,o,planes);
+  scene.add(root);root.userData.center=[0,-2];root.userData.room='hall';root.userData.always=true;
+  hideDecor('hall',o.keepDecor);
+  console.log('[DVX] hall strip: scale',s.toFixed(4));
+}
+function dressDoll(o,root){
+  root.updateMatrixWorld(true);
+  const sz=new THREE.Box3().setFromObject(root).getSize(V3()),L=Math.max(sz.x,sz.y,sz.z)||1;
+  if(sz.z>=sz.x&&sz.z>=sz.y)root.rotation.y=Math.PI/2;else if(sz.y>=sz.x&&sz.y>=sz.z)root.rotation.z=-Math.PI/2;   // longest axis along the table
+  root.scale.setScalar((o.length||1.1)/L);root.updateMatrixWorld(true);
+  const b=new THREE.Box3().setFromObject(root),c=b.getCenter(V3());
+  root.position.set(-c.x,-b.min.y,-c.z);
+  W.doll.children.slice().forEach(ch=>W.doll.remove(ch));                           // remove the 4 procedural parts
+  W.doll.scale.setScalar(1);W.doll.rotation.set(0,0,0);W.dollS=1;
+  dressMaterials(root,o,null);W.doll.add(root);root.userData.always=true;
+  W.doll.position.y=.92+(state.f&&state.f.doll?.35:0);
+}
+/* keep draw calls low: only render a dressed room while the player is near it */
+function updateDressing(dt){
+  DRESS.t-=dt;if(DRESS.t>0)return;DRESS.t=.4;
+  for(const id in DRESS.roots){const r=DRESS.roots[id];if(!r||r.userData.always||!r.userData.center)continue;
+    r.visible=P.lv==='house'&&Math.hypot(P.x-r.userData.center[0],P.z-r.userData.center[1])<16}
+  if(DRESS.roots.hall)DRESS.roots.hall.visible=P.lv==='house';
+}
+window.DVX={models:DRESS,plan:MODEL_PLAN,report:dressReport,apply:(id,over)=>{const p=MODEL_PLAN.find(x=>x.id===id),g=DRESS.gltf[id];if(!p||!g)return console.warn('model not loaded',id);dressApply(p,g,over);refreshWorld()}};
