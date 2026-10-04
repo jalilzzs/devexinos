@@ -31,6 +31,7 @@ function updateSystems(dt,now){
   for(const id in ITEMG){const g=ITEMG[id];if(g.visible)g.rotation.y+=dt*.8}
   if(dust)dust.rotation.y+=dt*.01;
   updateLights(dt,now);updateDanger(dt);updateAmbience(dt);
+  if(typeof updateDressing==='function')updateDressing(dt);
 }
 
 /* ---------- heartbeat (audio + visual) ---------- */
