@@ -1,0 +1,25 @@
+{
+  "name": "devexinos",
+  "version": "1.1.0",
+  "description": "Devexinos - Part 1: The Mansion. A lightweight 3D horror game for the web (Three.js) with an in-game phone.",
+  "main": "index.html",
+  "private": true,
+  "scripts": {
+    "start": "npx serve .",
+    "dev": "python3 -m http.server 8080"
+  },
+  "dependencies": {
+    "three": "0.128.0"
+  },
+  "devDependencies": {
+    "serve": "^14.2.0"
+  },
+  "keywords": [
+    "horror",
+    "threejs",
+    "webgl",
+    "game",
+    "capacitor"
+  ],
+  "license": "UNLICENSED"
+}
