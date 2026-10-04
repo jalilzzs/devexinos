@@ -54,6 +54,7 @@ function applyGfx(){
   renderer.shadowMap.enabled=S.shadows;
   if(flash){flash.castShadow=S.shadows;const m=S.gfx==='high'?1024:512;flash.shadow.mapSize.set(m,m);if(flash.shadow.map){flash.shadow.map.dispose();flash.shadow.map=null}}
   if(scene)scene.traverse(o=>{if(o.material)o.material.needsUpdate=true});
+  if(S.gfx==='high'&&typeof loadDressing==='function')loadDressing();
 }
 function applyVol(){if(!AC)return;master.gain.value=S.master;sfxG.gain.value=S.sfx;bgmG.gain.value=S.bgm*.5}
 function applyAll(){applyLang();applyUI();applyGfx();applyVol()}
