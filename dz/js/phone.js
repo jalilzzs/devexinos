@@ -10,8 +10,21 @@ export const CONTACTS=[{n:'Mama',i:'❤️',k:'mama',d:'Mama, a loving Algerian 
 export function initPhone(api){
  const el=$('#phone'),pb=$('#pb'),S=api.S;let tracks=[],ti=0,gal=[],started=false,want=false,unl=false,userPaused=false,probed=false;const au=new Audio();au.preload='auto';
  const vol=()=>au.volume=S.master*S.music;
- (async()=>{for(let i=1;i<=60;i++){const u=new URL(`assets/audio/music${i}.mp3`,document.baseURI).href;try{const r=await fetch(u,{method:'HEAD'});if(!r.ok||!/audio|mpeg|octet/i.test(r.headers.get('content-type')||'')){if(i===1)console.warn('music1.mp3 not found at',u,r.status);break}tracks.push(u);if(want&&!started)nextT(0)}catch(e){console.warn('music probe failed',e);break}}probed=true})();
- au.onended=()=>{if(started)nextT(1)};au.onerror=()=>console.warn('music error',au.error&&au.error.code,au.src);
+
+ // تم تعديل طريقة جلب الأغاني لتجنب فشل الـ fetch وتهيئة المسارات مباشرة
+ (async()=>{
+  const maxTracks = 30; // أقصى عدد محتمل لملفات الموسيقى في مجلد assets/audio/
+  for(let i=1; i<=maxTracks; i++){
+   const u = new URL(`assets/audio/music${i}.mp3`, document.baseURI).href;
+   tracks.push(u);
+  }
+  probed=true;
+  if(want && !started && tracks.length) nextT(0);
+ })();
+
+ au.onended=()=>{if(started)nextT(1)};
+ au.onerror=()=>console.warn('music error',au.error&&au.error.code,au.src);
+
  const nextT=d=>{if(!tracks.length)return;started=true;userPaused=false;ti=(ti+d+tracks.length)%tracks.length;au.src=tracks[ti];vol();au.play().catch(()=>{});if($('#trk'))$('#trk').textContent='♪ music'+(ti+1)+'.mp3'};
  const clock=()=>{$('#pt').textContent=new Date().toLocaleTimeString([],{hour:'2-digit',minute:'2-digit'});$('#pm').textContent=Math.floor(api.money()).toLocaleString()+' '+t('cur')};
  function home(){el.classList.remove('cam');api.pause(true);clock();
@@ -35,5 +48,5 @@ export function initPhone(api){
   else if(a==='photos'){pb.innerHTML='<div class="thumbs">'+gal.map(u=>`<a href="${u}" download="dzair-photo.jpg"><img src="${u}"></a>`).join('')+'</div>'}}
  function close(){document.querySelector('.shutter')?.remove();pb.style.display='';el.classList.remove('on','cam');api.pause(false)}
  $('#pHome').onclick=()=>{document.querySelector('.shutter')?.remove();pb.style.display='';home()};
- return{info(){return '🎵 '+tracks.length+' tracks'},autoplay(){want=true;vol();if(!unl){unl=true;au.src=SIL;au.play().catch(()=>{})}if(tracks.length&&!started)nextT(0);else if(started&&au.paused&&!userPaused)au.play().catch(()=>{});return(probed&&!tracks.length)||(started&&!au.paused)},incoming(){const c=CONTACTS[Math.floor(Math.random()*CONTACTS.length)],th=Save.data.chats[c.k]||=[],m=opener(c,api.ctx(),S.lang);th.push({w:'them',t:m,act:c.k==='samir'});Save.write();Snd.play('message');api.notify(c.n+': '+m.slice(0,38))},open(){el.classList.add('on');home()},toggle(){el.classList.contains('on')?close():this.open()},vol,close};
+ return{info(){return '🎵 '+tracks.length+' tracks'},autoplay(){want=true;vol();if(!unl){unl=true;au.src=SIL;au.play().catch(()=>{})}if(tracks.length&&!started)nextT(0);else if(started&&au.paused&&!userPaused)au.play().catch(()=>{});return(probed&&!tracks.length)||(started&&!au.paused)},incoming(){const c=CONTACTS[Math.floor(Math.random()*CONTACTS.length)],th=Save.data.chats[c.k]||[],m=opener(c,api.ctx(),S.lang);th.push({w:'them',t:m,act:c.k==='samir'});Save.write();Snd.play('message');api.notify(c.n+': '+m.slice(0,38))},open(){el.classList.add('on');home()},toggle(){el.classList.contains('on')?close():this.open()},vol,close};
 }
