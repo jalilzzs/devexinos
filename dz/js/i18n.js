@@ -1,0 +1,16 @@
+// [en, fr, ar, ru]
+const D={play:['Play','Jouer','العب','Играть'],resume:['Resume','Reprendre','متابعة','Продолжить'],garage:['Garage','Garage','المرآب','Гараж'],settings:['Settings','Réglages','الإعدادات','Настройки'],
+map:['Choose map','Choisir la carte','اختر الخريطة','Выбор карты'],buy:['Buy','Acheter','شراء','Купить'],use:['Select','Choisir','اختيار','Выбрать'],lvl:['Level','Niveau','المستوى','Уровень'],
+cur:['DA','DA','دج','DA'],loading:['Loading…','Chargement…','جارٍ التحميل…','Загрузка…'],close:['Close','Fermer','إغلاق','Закрыть'],lang:['Language','Langue','اللغة','Язык'],
+ctrl:['Controls','Commandes','التحكم','Управление'],traffic:['Traffic density','Densité du trafic','كثافة المرور','Плотность трафика'],tspeed:['Traffic speed','Vitesse du trafic','سرعة المرور','Скорость трафика'],
+master:['Master volume','Volume général','الصوت العام','Общая громкость'],music:['Music volume','Volume musique','صوت الموسيقى','Музыка'],sfx:['SFX volume','Volume effets','المؤثرات','Эффекты'],
+shadows:['Shadows','Ombres','الظلال','Тени'],quality:['Quality','Qualité','الجودة','Качество'],fps:['FPS limit','Limite FPS','حد الإطارات','Лимит FPS'],post:['Post-processing','Post-traitement','المعالجة','Постобработка'],
+res:['Resolution','Résolution','الدقة','Разрешение'],near:['Close pass! x2','Frôlement ! x2','تجاوز خطير! x2','Опасный обгон! x2'],phone:['Phone','Téléphone','الهاتف','Телефон'],
+contacts:['Contacts','Contacts','جهات الاتصال','Контакты'],camera:['Camera','Appareil photo','الكاميرا','Камера'],bank:['Bank','Banque','البنك','Банк'],musicapp:['Music','Musique','الموسيقى','Музыка'],
+photos:['Photos','Photos','الصور','Фото'],job:['Delivery job','Livraison','توصيل','Доставка'],done:['Delivered!','Livré !','تم التوصيل!','Доставлено!'],fail:['Time up','Temps écoulé','انتهى الوقت','Время вышло'],
+nomusic:['Put music1.mp3, music2.mp3… in assets/audio/','Mettez music1.mp3… dans assets/audio/','ضع music1.mp3 ... في assets/audio/','Положите music1.mp3… в assets/audio/'],
+tune:['Tuning','Tuning','التعديل','Тюнинг'],engine:['Engine','Moteur','المحرك','Двигатель'],turbo:['Turbo','Turbo','تيربو','Турбо'],ecu:['ECU / Gearbox','ECU / Boîte','ECU / ناقل','ECU / КПП'],weight:['Lightweight','Allègement','تخفيف الوزن','Облегчение'],tires:['Tires','Pneus','العجلات','Шины'],brakes:['Brakes','Freins','الفرامل','Тормоза'],paint:['Paint','Peinture','الطلاء','Краска'],neon:['Underglow','Néon','نيون','Неон'],aiurl:['AI chat server URL (optional)','URL serveur IA (optionnel)','رابط خادم الذكاء الاصطناعي (اختياري)','URL ИИ-сервера (необязательно)'],typemsg:['Type a message…','Écrire un message…','اكتب رسالة…','Напишите сообщение…'],s_audio:['Audio','Audio','الصوت','Звук'],s_gfx:['Graphics','Graphismes','الرسوميات','Графика'],s_ctrl:['Controls','Commandes','التحكم','Управление'],s_traffic:['Traffic','Trafic','المرور','Трафик'],s_lang:['Language','Langue','اللغة','Язык'],call:['Calling…','Appel…','اتصال…','Звонок…'],accept:['Accept job','Accepter','قبول','Принять']};
+const LN=['en','fr','ar','ru'];let L='ar';
+export const t=k=>(D[k]||[k])[LN.indexOf(L)]||D[k]?.[0]||k;
+export const lang=()=>L;
+export const setLang=l=>{L=l;document.documentElement.dir=l==='ar'?'rtl':'ltr';document.querySelectorAll('[data-t]').forEach(e=>e.textContent=t(e.dataset.t))};
