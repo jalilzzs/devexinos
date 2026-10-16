@@ -11,7 +11,8 @@ function loop(b,v){const s=ctx.createBufferSource(),g=ctx.createGain();s.buffer=
 function stopEng(){if(!eng)return;try{(eng.s||eng.o).stop();eng.o2?.stop()}catch{}eng.g.disconnect();eng=null}
 export const Snd={
  init(s){S=s},
- unlock(){if(ctx){ctx.resume();return}try{ctx=new AudioContext();mg=ctx.createGain();sg=ctx.createGain();sg.connect(mg);mg.connect(ctx.destination);this.vol();
+ bindGesture(cb){const ev=['pointerdown','touchend','click','keydown'],f=()=>{this.unlock();cb&&cb();if(ctx&&ctx.state==='running')ev.forEach(e=>removeEventListener(e,f,true))};ev.forEach(e=>addEventListener(e,f,true))},
+ unlock(){if(ctx){if(ctx.state!=='running')ctx.resume();return}try{ctx=new(window.AudioContext||window.webkitAudioContext)();ctx.resume();{const b=ctx.createBuffer(1,1,22050),s=ctx.createBufferSource();s.buffer=b;s.connect(ctx.destination);s.start(0)}mg=ctx.createGain();sg=ctx.createGain();sg.connect(mg);mg.connect(ctx.destination);this.vol();
   for(const[k,f]of Object.entries(SOUNDS))fetchBuf(f).then(b=>{if(b){B[k]=b;if(k==='ambience')loop(b,.25)}});this.setCar(car)}catch{}},
  vol(){if(ctx){mg.gain.value=S.master;sg.gain.value=S.sfx}},
  play(n,v=1,r=1){if(!ctx)return;const b=B[n];if(b){const s=ctx.createBufferSource(),g=ctx.createGain();s.buffer=b;s.playbackRate.value=r;g.gain.value=v;s.connect(g).connect(sg);s.start()}else SYN[n]?.()},
