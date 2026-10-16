@@ -6,6 +6,7 @@ import {Save} from './save.js';
 import {t,setLang} from './i18n.js';
 import {initPhone} from './phone.js';
 import {Snd} from './audio.js';
+import {Ground} from './ground.js';
 import {stats,PARTS,PAINTS,cost} from './tuning.js';
 import {DRACOLoader} from 'three/addons/loaders/DRACOLoader.js';
 import {MeshoptDecoder} from 'three/addons/libs/meshopt_decoder.module.js';
@@ -55,12 +56,12 @@ async function carModel(c,npc,cb){
 let pT=0,pD=0,spawnId=0;const prog=p=>{pT=p},frame=()=>new Promise(r=>requestAnimationFrame(()=>r()));
 
 // ---------- State ----------
-let msgT=45;const TR=CARS.filter(c=>c.npc!==false);let eff=null,map=null,root=null,ground=null,chunks=[],player=null,pcfg=null,traffic=[],job=null,beam=null,camMode=0,paused=false,playing=false,snapCb=null,lvl=1;
+let msgT=45,frameN=0;const TR=CARS.filter(c=>c.npc!==false);let eff=null,map=null,root=null,ground=null,chunks=[],player=null,pcfg=null,traffic=[],job=null,beam=null,camMode=0,paused=false,playing=false,snapCb=null,lvl=1;
 const P={x:0,z:0,h:0,v:0,s:0,hc:0,ay:0},M={cx:0,cz:0,B:100,gy:0};
 
 // Finds the real road/ground height: ray-cast down on a grid, take the most common surface level (roads/ground cover the most area), spawn on it.
 function findGround(root,b){const rc=new THREE.Raycaster(),o=new THREE.Vector3(),d=new THREE.Vector3(0,-1,0),pts=[],N=17,sp=Math.min(M.B*.6,350);
- for(let i=0;i<N;i++)for(let j=0;j<N;j++){const x=M.cx+(i/(N-1)-.5)*2*sp,z=M.cz+(j/(N-1)-.5)*2*sp;rc.set(o.set(x,b.max.y+20,z),d);const h=rc.intersectObject(root,true)[0];if(h)pts.push({x,z,y:h.point.y})}
+ for(let i=0;i<N;i++)for(let j=0;j<N;j++){const x=M.cx+(i/(N-1)-.5)*2*sp,z=M.cz+(j/(N-1)-.5)*2*sp;rc.firstHitOnly=true;rc.set(o.set(x,b.max.y+20,z),d);const L=Ground.list(x,z),h=L&&(Ground.prep(L),rc.intersectObjects(L,false)[0]);if(h)pts.push({x,z,y:h.point.y})}
  if(!pts.length)return{y:b.min.y+.02,x:M.cx,z:M.cz};
  const bins={};pts.forEach(p=>{(bins[Math.round(p.y*2)]??=[]).push(p)});let best=null,bn=-1;
  for(const k of Object.keys(bins).map(Number)){const c=[...(bins[k-1]||[]),...bins[k],...(bins[k+1]||[])];if(c.length>bn){bn=c.length;best=c}}
@@ -76,22 +77,26 @@ async function startMap(id){
   if(root)sc.remove(root);if(ground)sc.remove(ground);
   root=raw.clone(true);let b=new THREE.Box3().setFromObject(root),sz=b.getSize(new THREE.Vector3());
   root.scale.setScalar(map.extent/Math.max(sz.x,sz.z));sc.add(root);root.updateMatrixWorld(true);b=new THREE.Box3().setFromObject(root);sz=b.getSize(new THREE.Vector3());
-  M.cx=(b.min.x+b.max.x)/2;M.cz=(b.min.z+b.max.z)/2;M.B=Math.max(sz.x,sz.z)/2*.96;const G=findGround(root,b);M.gy=map.groundY??G.y;
+  M.cx=(b.min.x+b.max.x)/2;M.cz=(b.min.z+b.max.z)/2;M.B=Math.max(sz.x,sz.z)/2*.96;await Promise.race([Ground.ready,new Promise(r=>setTimeout(r,3000))]);Ground.build(root);const G=findGround(root,b);M.gy=map.groundY??G.y;M.sx=G.x;M.sz=G.z;M.sy=G.y;
   ground=new THREE.Mesh(new THREE.PlaneGeometry(M.B*4,M.B*4),new THREE.MeshLambertMaterial({color:0x555a55}));ground.rotation.x=-Math.PI/2;ground.position.set(M.cx,M.gy-.06,M.cz);ground.receiveShadow=true;sc.add(ground);
   prog(.96);await frame();
   let nodes=root.children;while(nodes.length===1&&nodes[0].children.length>1)nodes=nodes[0].children;
   chunks=nodes.map(n=>{const bb=new THREE.Box3().setFromObject(n);return{n,c:bb.getCenter(new THREE.Vector3()),r:bb.getSize(new THREE.Vector3()).length()/2}});
   if(player)sc.remove(player);player=pm;sc.add(player);refreshEff();applyLook();
-  Object.assign(P,{x:G.x,z:G.z,h:0,hc:0,v:0,s:0});job=null;if(beam)beam.visible=false;lvl=Save.level();
+  Object.assign(P,{x:G.x,z:G.z,y:G.y,vy:0,pt:0,h:0,hc:0,v:0,s:0});job=null;if(beam)beam.visible=false;lvl=Save.level();
   traffic.forEach(n=>sc.remove(n.m));traffic=[];
   prog(1);await new Promise(r=>setTimeout(r,260));            // let the bar visibly reach 100%
   show(null);$('#hud').style.display='block';$('#ctl').style.display='flex';playing=true;paused=false;
   syncTraffic();                                               // NOT awaited: cars appear one by one while you already drive
  }catch(e){console.error(e);menu();$('#stat').textContent='⚠ '+(e.message||'load error')}}
 async function syncTraffic(){const my=++spawnId,n=Math.round(S.traffic*18);while(traffic.length>n)sc.remove(traffic.pop().m);
- while(traffic.length<n&&my===spawnId){const i=traffic.length,m=await carModel(TR[i%TR.length],true);if(my!==spawnId)return;sc.add(m);const o={m,d:i%2?1:-1,v:0,pass:false};traffic.push(o);place(o,true);await new Promise(r=>setTimeout(r,120))}}
-function place(n,init){n.v=(9+Math.random()*7)*S.tspeed;const d=init?30+Math.random()*200:150+Math.random()*100;
- n.m.position.set(P.x+(n.d>0?3.4:-3.4),M.gy,P.z+d*(init&&Math.random()<.4?-1:1));n.m.rotation.y=n.d>0?0:Math.PI;n.pass=false}
+ while(traffic.length<n&&my===spawnId){const i=traffic.length,m=await carModel(TR[i%TR.length],true);if(my!==spawnId)return;sc.add(m);const o={m,i,d:i%2?1:-1,v:0,pass:false,tg:0,off:false,wait:0,dx:0,dz:1};traffic.push(o);place(o,true);await new Promise(r=>setTimeout(r,120))}}
+function place(n,init){n.v=(9+Math.random()*7)*S.tspeed;n.pass=false;
+ for(let t=0;t<14;t++){const a=Math.random()*6.283,d=init?30+Math.random()*190:140+Math.random()*120,x=P.x+Math.sin(a)*d,z=P.z+Math.cos(a)*d,ax=Math.random()<.5,dx=ax?n.d:0,dz=ax?0:n.d;
+  let y=Ground.h(x,z,P.y,6,60);if(y===null||Math.abs(y-P.y)>8)continue;let py=y,ok=true;
+  for(let k=1;k<=5&&ok;k++){const yy=Ground.h(x+dx*15*k,z+dz*15*k,py,1.8,30);ok=yy!==null&&Math.abs(yy-py)<1.8;py=yy}   // 75 m of continuous road ahead
+  if(!ok)continue;n.dx=dx;n.dz=dz;n.m.position.set(x,y,z);n.m.rotation.y=Math.atan2(dx,dz);n.tg=y;n.off=false;n.m.visible=true;return}
+ n.off=true;n.wait=1.5;n.m.visible=false}
 
 // ---------- Input ----------
 const keys={};addEventListener('keydown',e=>{if(e.target.tagName==='INPUT')return;keys[e.code]=1;if(e.code==='KeyH')Snd.play('horn');if(e.code==='KeyC')camMode=(camMode+1)%3});addEventListener('keyup',e=>keys[e.code]=0);
@@ -136,15 +141,29 @@ function update(dt){
   const tgt=steerTarget(dt),k=Math.abs(tgt)>Math.abs(P.s)?9:14;P.s+=(tgt-P.s)*Math.min(1,dt*k);
   const del=P.s*(.6-.5*Math.min(1,Math.pow(Math.abs(P.v)/top,.7))),L=pcfg.len*.62;let yaw=P.v/L*Math.tan(del);const aLat=Math.abs(yaw*P.v),gmax=eff.grip*(10-eff.weight/700);
   if(aLat>gmax){yaw*=gmax/aLat;P.v*=1-.25*dt}P.h-=yaw*dt;P.ay=yaw*P.v;
-  P.x+=Math.sin(P.h)*P.v*dt;P.z+=Math.cos(P.h)*P.v*dt;
-  if(Math.abs(P.x-M.cx)>M.B||Math.abs(P.z-M.cz)>M.B){P.x=clamp(P.x,M.cx-M.B,M.cx+M.B);P.z=clamp(P.z,M.cz-M.B,M.cz+M.B);P.v*=.5;crashFx(.5)}} // invisible walls
- player.position.set(P.x,M.gy,P.z);player.rotation.y=P.h;player.rotation.z=clamp(-P.ay*.006,-.05,.05);
- const sn=80/smSize;V.set(Math.round(P.x/sn)*sn,0,Math.round(P.z/sn)*sn);sun.target.position.copy(V);sun.position.set(V.x+80,120,V.z+40); // texel-snapped shadows (no shimmer)
+  const fx=Math.sin(P.h),fz=Math.cos(P.h),sg=P.v<0?-1:1;let mv=true;
+  if(Math.abs(P.v)>.3&&(Ground.fast||frameN%3===0)&&Ground.wall(P.x,P.y,P.z,fx*sg,fz*sg,pcfg.len/2+Math.abs(P.v)*dt+.2,player.userData.wid/2-.15)){crashFx(Math.min(1,Math.abs(P.v)/12));P.v*=-.2;mv=false}   // solid walls/buildings
+  if(mv){P.x+=fx*P.v*dt;P.z+=fz*P.v*dt}
+  if(Math.abs(P.x-M.cx)>M.B||Math.abs(P.z-M.cz)>M.B){P.x=clamp(P.x,M.cx-M.B,M.cx+M.B);P.z=clamp(P.z,M.cz-M.B,M.cz+M.B);P.v*=.5;crashFx(.5)}
+  const hl=pcfg.len*.38,hF=Ground.h(P.x+fx*hl,P.z+fz*hl,P.y,.9,40),hR=Ground.h(P.x-fx*hl,P.z-fz*hl,P.y,.9,40),gT=hF??hR;     // follow the real surface
+  if(gT!==null){if(hF!==null&&hR!==null)P.pt+=(Math.atan2(hF-hR,hl*2)-P.pt)*Math.min(1,dt*10);
+   const tY=hF!==null&&hR!==null?(hF+hR)/2:gT;if(tY>=P.y-.3||P.y-tY<.35){P.y+=(tY-P.y)*Math.min(1,dt*16);P.vy=0}else{P.vy-=25*dt;P.y+=P.vy*dt;if(P.y<tY){P.y=tY;P.vy=0}}}
+  else{P.vy-=25*dt;P.y+=P.vy*dt}
+  if(P.y<M.sy-60){P.x=M.sx;P.z=M.sz;P.y=M.sy;P.v=0;P.vy=0;P.pt=0}} // invisible walls
+ player.position.set(P.x,P.y,P.z);player.rotation.x=-P.pt;player.rotation.y=P.h;player.rotation.z=clamp(-P.ay*.006,-.05,.05);
+ const sn=80/smSize;V.set(Math.round(P.x/sn)*sn,P.y,Math.round(P.z/sn)*sn);sun.target.position.copy(V);sun.position.set(V.x+80,P.y+120,V.z+40); // texel-snapped shadows (no shimmer)
  for(const c of chunks)c.n.visible=V.set(c.c.x-P.x,0,c.c.z-P.z).length()-c.r<map.cullDist;
- for(const n of traffic){n.m.position.z+=n.d*n.v*dt;const dx=n.m.position.x-P.x,dz=n.m.position.z-P.z,d=Math.hypot(dx,dz);
-  if(d>280||Math.abs(n.m.position.x-M.cx)>M.B||Math.abs(n.m.position.z-M.cz)>M.B)place(n);
-  if(d<2.7&&dt){const nx=-dx/(d||1),nz=-dz/(d||1);P.x+=nx*(2.7-d);P.z+=nz*(2.7-d);P.v*=.55;crashFx()}
-  else if(Math.abs(dx)<2.8&&Math.abs(dz)<3&&!n.pass&&P.v>12){n.pass=true;const c=Math.abs(dx)<1.9,v=c?1200:600;addMoney(v);Snd.play(c?'cash':'pass');toast((c?t('near')+' ':'')+'+'+v+' '+t('cur'))}}
+ frameN++;
+ for(const n of traffic){
+  if(n.off){if((n.wait-=dt)<=0)place(n);continue}
+  const ps=n.m.position;ps.x+=n.dx*n.v*dt;ps.z+=n.dz*n.v*dt;const dx=ps.x-P.x,dz=ps.z-P.z,d=Math.hypot(dx,dz);
+  if(dt&&(frameN+n.i)%3===0){const hy=Ground.h(ps.x,ps.z,ps.y,1.1,40);if(hy===null||hy-ps.y>1.1||ps.y-hy>5){place(n);continue}n.tg=hy}   // same surface logic as the player
+  ps.y+=(n.tg-ps.y)*Math.min(1,dt*8);
+  if(d>280||Math.abs(ps.x-M.cx)>M.B||Math.abs(ps.z-M.cz)>M.B){place(n);continue}
+  const near=Math.abs(ps.y-P.y)<2.5;
+  if(d<2.7&&dt&&near){const nx=-dx/(d||1),nz=-dz/(d||1);P.x+=nx*(2.7-d);P.z+=nz*(2.7-d);P.v*=.55;crashFx()}
+  else if(near&&!n.pass&&P.v>12){const lat=dx*Math.cos(P.h)-dz*Math.sin(P.h),lon=dx*Math.sin(P.h)+dz*Math.cos(P.h);
+   if(Math.abs(lat)<2.8&&Math.abs(lon)<3){n.pass=true;const c=Math.abs(lat)<1.9,v=c?1200:600;addMoney(v);Snd.play(c?'cash':'pass');toast((c?t('near')+' ':'')+'+'+v+' '+t('cur'))}}}
  if(dt&&kmh>60)addMoney(kmh*dt*.5);if(dt&&(msgT-=dt)<=0){msgT=70+Math.random()*80;phone.incoming()}
  if(job){job.t-=dt;const d=Math.hypot(job.x-P.x,job.z-P.z);$('#jobp').textContent=`📦 ${Math.round(d)} m · ${Math.max(0,Math.ceil(job.t))} s`;
   if(d<12){addMoney(job.r);toast(t('done')+' +'+job.r);endJob()}else if(job.t<=0){toast(t('fail'));endJob()}}
@@ -152,15 +171,15 @@ function update(dt){
  Snd.engine(kmh,!!gas,eff.top,dt>0);
  // cameras: heading-damped chase (no stitching), frame-rate independent smoothing
  const len=pcfg.len,h=player.userData.h;P.hc+=angd(P.h,P.hc)*(1-Math.exp(-5*dt));const sx=Math.sin(P.h),sz=Math.cos(P.h);
- if(camMode===0){const dist=len*1.5+3.2+kmh*.012,cx=Math.sin(P.hc),cz=Math.cos(P.hc);V.set(P.x-cx*dist,M.gy+h+1.1+len*.12,P.z-cz*dist);cam.position.lerp(V,dt?1-Math.exp(-11*dt):1);cam.lookAt(P.x+sx*3,M.gy+h*.8,P.z+sz*3);cam.fov+=(62+kmh*.12-cam.fov)*Math.min(1,dt*3)}
- else if(camMode===1){cam.position.set(P.x+sz*.38+sx*.1,M.gy+h*.82,P.z-sx*.38+sz*.1);cam.lookAt(P.x+sx*12-P.s*sz*2,M.gy+h*.8,P.z+sz*12+P.s*sx*2);cam.fov=70}
- else{const a=performance.now()/5000;V.set(P.x+Math.sin(a)*(len*2+4),M.gy+1.6+Math.sin(a*.7),P.z+Math.cos(a)*(len*2+4));cam.position.lerp(V,dt?1-Math.exp(-3*dt):1);cam.lookAt(P.x,M.gy+h*.6,P.z);cam.fov=55}
+ if(camMode===0){const dist=len*1.5+3.2+kmh*.012,cx=Math.sin(P.hc),cz=Math.cos(P.hc);V.set(P.x-cx*dist,P.y+h+1.1+len*.12,P.z-cz*dist);cam.position.lerp(V,dt?1-Math.exp(-11*dt):1);cam.lookAt(P.x+sx*3,P.y+h*.8,P.z+sz*3);cam.fov+=(62+kmh*.12-cam.fov)*Math.min(1,dt*3)}
+ else if(camMode===1){cam.position.set(P.x+sz*.38+sx*.1,P.y+h*.82,P.z-sx*.38+sz*.1);cam.lookAt(P.x+sx*12-P.s*sz*2,P.y+h*.8,P.z+sz*12+P.s*sx*2);cam.fov=70}
+ else{const a=performance.now()/5000;V.set(P.x+Math.sin(a)*(len*2+4),P.y+1.6+Math.sin(a*.7),P.z+Math.cos(a)*(len*2+4));cam.position.lerp(V,dt?1-Math.exp(-3*dt):1);cam.lookAt(P.x,P.y+h*.6,P.z);cam.fov=55}
  cam.updateProjectionMatrix();player.visible=camMode!==1;
  const nl=Save.level();if(nl>lvl){lvl=nl;Snd.play('levelup');toast('⬆ '+t('lvl')+' '+nl)}}
 function addMoney(v){Save.data.money+=v;Save.data.xp+=v/400}
 function toast(s){const e=$('#toast');e.textContent=s;clearTimeout(e._t);e._t=setTimeout(()=>e.textContent='',1400);Save.write()}
 function startJob(){const a=Math.random()*TAU,d=250+Math.random()*250;job={x:clamp(P.x+Math.sin(a)*d,M.cx-M.B,M.cx+M.B),z:clamp(P.z+Math.cos(a)*d,M.cz-M.B,M.cz+M.B),r:15000,t:40+d/8};
- if(!beam){beam=new THREE.Mesh(new THREE.CylinderGeometry(3,3,90,16,1,true),new THREE.MeshBasicMaterial({color:0xffd84a,transparent:true,opacity:.35,side:THREE.DoubleSide,fog:false}));sc.add(beam)}beam.visible=true;beam.position.set(job.x,M.gy+45,job.z)}
+ if(!beam){beam=new THREE.Mesh(new THREE.CylinderGeometry(3,3,90,16,1,true),new THREE.MeshBasicMaterial({color:0xffd84a,transparent:true,opacity:.35,side:THREE.DoubleSide,fog:false}));sc.add(beam)}beam.visible=true;beam.position.set(job.x,P.y+45,job.z)}
 function endJob(){job=null;beam.visible=false;$('#jobp').textContent=''}
 
 // ---------- Menus ----------
@@ -195,7 +214,8 @@ $('#bCam').onclick=()=>camMode=(camMode+1)%3;$('#bMenu').onclick=menu;$('#bPh').
 
 // ---------- Boot ----------
 phone=initPhone({notify:s=>toast('📩 '+s),ctx:()=>({n:Save.data.name,m:Save.data.money,l:Save.level(),car:pcfg.name,tuned:Object.values(Save.data.tune[pcfg.id]||{}).filter(v=>typeof v==='number').reduce((a,b)=>a+b,0)}),S,money:()=>Save.data.money,level:()=>Save.level(),pause:p=>paused=p,snap:cb=>snapCb=cb,startJob});
-Snd.init(S);Snd.bindGesture(()=>phone.autoplay());document.addEventListener('click',e=>{if(e.target.closest('button,.app,.row'))Snd.play('click',.6)},true);$('#bHorn').onclick=()=>Snd.play('horn');
+Snd.init(S);Snd.bindGesture(()=>phone.autoplay());
+for(const ev of['contextmenu','selectstart','gesturestart'])document.addEventListener(ev,e=>{if(!(e.target.closest&&e.target.closest('input,textarea')))e.preventDefault()},{passive:false});   // no Copy/Look Up menu, no pinch-zoomdocument.addEventListener('click',e=>{if(e.target.closest('button,.app,.row'))Snd.play('click',.6)},true);$('#bHorn').onclick=()=>Snd.play('horn');
 (async()=>{pcfg=CARS.find(c=>c.id===Save.data.car);refreshEff();setLang(S.lang);gfx();buildCtl();menu();tick();   // menu is shown immediately
  const f=['maps/'+MAPS[0].file,...CARS.filter(c=>Save.data.owned.includes(c.id)).map(c=>'cars/'+c.file)];            // background preload (map first)
  for(const x of f){await new Promise(r=>setTimeout(r,300));try{await load('assets/models/'+x)}catch{console.warn('missing',x)}}})();
