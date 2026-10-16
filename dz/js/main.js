@@ -28,33 +28,43 @@ function gfx(){const[q,sm]=Q[S.quality];R.setPixelRatio(Math.min(devicePixelRati
 addEventListener('resize',gfx);
 
 // ---------- Assets (cached, auto-scaled to real-world size) ----------
-const GL=new GLTFLoader(),cache={};GL.setMeshoptDecoder(MeshoptDecoder);{const dr=new DRACOLoader();dr.setDecoderPath('https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/libs/draco/gltf/');GL.setDRACOLoader(dr)}const load=u=>cache[u]??=new Promise((ok,no)=>GL.load(u,g=>ok(g.scene),undefined,no));
-async function carModel(c,npc){
- const m=(await load('assets/models/cars/'+c.file)).clone(true),b=new THREE.Box3().setFromObject(m),s=b.getSize(new THREE.Vector3()),ct=b.getCenter(new THREE.Vector3());
+const GL=new GLTFLoader(),cache={};GL.setMeshoptDecoder(MeshoptDecoder);{const dr=new DRACOLoader();dr.setDecoderPath('https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/libs/draco/gltf/');GL.setDRACOLoader(dr)}const load=(u,cb)=>{let e=cache[u];if(!e){e=cache[u]={fr:0,ls:[]};e.p=new Promise((ok,no)=>GL.load(u,g=>{e.fr=1;e.ls.forEach(f=>f(1));ok(g.scene)},x=>{e.fr=x.total?x.loaded/x.total:Math.min(.95,e.fr+.02);e.ls.forEach(f=>f(e.fr))},er=>{delete cache[u];no(er)}))}
+ if(cb){e.ls.push(cb);cb(e.fr)}return e.p};
+async function carModel(c,npc,cb){
+ const m=(await load('assets/models/cars/'+c.file,cb)).clone(true),b=new THREE.Box3().setFromObject(m),s=b.getSize(new THREE.Vector3()),ct=b.getCenter(new THREE.Vector3());
  m.position.set(-ct.x,-b.min.y,-ct.z);const w=new THREE.Group();w.add(m);if(s.x>s.z)w.rotation.y=Math.PI/2;if(c.flip)w.rotation.y+=Math.PI;
  const k=c.len/Math.max(s.x,s.z);w.scale.setScalar(k);const g=new THREE.Group();g.add(w);g.rotation.order='YXZ';g.userData={len:c.len,h:s.y*k,wid:Math.min(s.x,s.z)*k};
  m.traverse(o=>{if(o.isMesh){o.castShadow=!npc;if(npc)o.material=new THREE.MeshLambertMaterial({color:o.material.color||0xcccccc,map:o.material.map||null})}});return g}
-const prog=p=>$('#lbar i').style.width=p*100+'%';
+let pT=0,pD=0,spawnId=0;const prog=p=>{pT=p},frame=()=>new Promise(r=>requestAnimationFrame(()=>r()));
 
 // ---------- State ----------
 let msgT=45;const TR=CARS.filter(c=>c.npc!==false);let eff=null,map=null,root=null,ground=null,chunks=[],player=null,pcfg=null,traffic=[],job=null,beam=null,camMode=0,paused=false,playing=false,snapCb=null,lvl=1;
 const P={x:0,z:0,h:0,v:0,s:0,hc:0,ay:0},M={cx:0,cz:0,B:100,gy:0};
 
 async function startMap(id){
- map=MAPS.find(m=>m.id===id);show('load');prog(0);
- if(root)sc.remove(root);if(ground)sc.remove(ground);
- root=(await load('assets/models/maps/'+map.file)).clone(true);let b=new THREE.Box3().setFromObject(root),sz=b.getSize(new THREE.Vector3());
- root.scale.setScalar(map.extent/Math.max(sz.x,sz.z));sc.add(root);root.updateMatrixWorld(true);b=new THREE.Box3().setFromObject(root);sz=b.getSize(new THREE.Vector3());
- M.cx=(b.min.x+b.max.x)/2;M.cz=(b.min.z+b.max.z)/2;M.B=Math.max(sz.x,sz.z)/2*.96;M.gy=map.groundY??b.min.y+.02;
- ground=new THREE.Mesh(new THREE.PlaneGeometry(M.B*4,M.B*4),new THREE.MeshLambertMaterial({color:0x555a55}));ground.rotation.x=-Math.PI/2;ground.position.set(M.cx,M.gy-.06,M.cz);ground.receiveShadow=true;sc.add(ground);prog(.4);
- let nodes=root.children;while(nodes.length===1&&nodes[0].children.length>1)nodes=nodes[0].children;
- chunks=nodes.map(n=>{const bb=new THREE.Box3().setFromObject(n);return{n,c:bb.getCenter(new THREE.Vector3()),r:bb.getSize(new THREE.Vector3()).length()/2}});
- pcfg=CARS.find(c=>c.id===Save.data.car);if(player)sc.remove(player);player=await carModel(pcfg,false);sc.add(player);refreshEff();applyLook();prog(.7);
- traffic.forEach(n=>sc.remove(n.m));traffic=[];await syncTraffic();
- Object.assign(P,{x:M.cx,z:M.cz,h:0,hc:0,v:0,s:0});job=null;if(beam)beam.visible=false;prog(1);lvl=Save.level();
- setTimeout(()=>{show(null);$('#hud').style.display='block';$('#ctl').style.display='flex';playing=true;paused=false},200)}
-async function syncTraffic(){const n=Math.round(S.traffic*18);while(traffic.length>n)sc.remove(traffic.pop().m);
- while(traffic.length<n){const i=traffic.length,m=await carModel(TR[i%TR.length],true);sc.add(m);const o={m,d:i%2?1:-1,v:0,pass:false};traffic.push(o);place(o,true)}}
+ map=MAPS.find(m=>m.id===id);playing=false;pT=pD=0;$('#hud').style.display=$('#ctl').style.display='none';show('load');
+ await frame();await frame();                                   // the loading screen is painted BEFORE any heavy work
+ try{
+  pcfg=CARS.find(c=>c.id===Save.data.car);let fm=0,fp=0;const upd=()=>prog(.7*fm+.2*fp);
+  const[raw,pm]=await Promise.all([load('assets/models/maps/'+map.file,f=>{fm=f;upd()}),carModel(pcfg,false,f=>{fp=f;upd()})]);
+  prog(.92);await frame();
+  if(root)sc.remove(root);if(ground)sc.remove(ground);
+  root=raw.clone(true);let b=new THREE.Box3().setFromObject(root),sz=b.getSize(new THREE.Vector3());
+  root.scale.setScalar(map.extent/Math.max(sz.x,sz.z));sc.add(root);root.updateMatrixWorld(true);b=new THREE.Box3().setFromObject(root);sz=b.getSize(new THREE.Vector3());
+  M.cx=(b.min.x+b.max.x)/2;M.cz=(b.min.z+b.max.z)/2;M.B=Math.max(sz.x,sz.z)/2*.96;M.gy=map.groundY??b.min.y+.02;
+  ground=new THREE.Mesh(new THREE.PlaneGeometry(M.B*4,M.B*4),new THREE.MeshLambertMaterial({color:0x555a55}));ground.rotation.x=-Math.PI/2;ground.position.set(M.cx,M.gy-.06,M.cz);ground.receiveShadow=true;sc.add(ground);
+  prog(.96);await frame();
+  let nodes=root.children;while(nodes.length===1&&nodes[0].children.length>1)nodes=nodes[0].children;
+  chunks=nodes.map(n=>{const bb=new THREE.Box3().setFromObject(n);return{n,c:bb.getCenter(new THREE.Vector3()),r:bb.getSize(new THREE.Vector3()).length()/2}});
+  if(player)sc.remove(player);player=pm;sc.add(player);refreshEff();applyLook();
+  Object.assign(P,{x:M.cx,z:M.cz,h:0,hc:0,v:0,s:0});job=null;if(beam)beam.visible=false;lvl=Save.level();
+  traffic.forEach(n=>sc.remove(n.m));traffic=[];
+  prog(1);await new Promise(r=>setTimeout(r,260));            // let the bar visibly reach 100%
+  show(null);$('#hud').style.display='block';$('#ctl').style.display='flex';playing=true;paused=false;
+  syncTraffic();                                               // NOT awaited: cars appear one by one while you already drive
+ }catch(e){console.error(e);menu();$('#stat').textContent='⚠ '+(e.message||'load error')}}
+async function syncTraffic(){const my=++spawnId,n=Math.round(S.traffic*18);while(traffic.length>n)sc.remove(traffic.pop().m);
+ while(traffic.length<n&&my===spawnId){const i=traffic.length,m=await carModel(TR[i%TR.length],true);if(my!==spawnId)return;sc.add(m);const o={m,d:i%2?1:-1,v:0,pass:false};traffic.push(o);place(o,true);await new Promise(r=>setTimeout(r,120))}}
 function place(n,init){n.v=(9+Math.random()*7)*S.tspeed;const d=init?30+Math.random()*200:150+Math.random()*100;
  n.m.position.set(P.x+(n.d>0?3.4:-3.4),M.gy,P.z+d*(init&&Math.random()<.4?-1:1));n.m.rotation.y=n.d>0?0:Math.PI;n.pass=false}
 
@@ -84,7 +94,7 @@ let phone;
 
 // ---------- Update ----------
 const V=new THREE.Vector3(),clock=new THREE.Clock();let acc=0;
-function tick(){requestAnimationFrame(tick);acc+=clock.getDelta();const step=1/S.fps;if(acc<step-.002)return;const dt=Math.min(acc,.05);acc=0;if(playing)update(paused?0:dt);R.render(sc,cam);
+function tick(){requestAnimationFrame(tick);pD+=(pT-pD)*.25;$('#lbar i').style.width=pD*100+'%';acc+=clock.getDelta();const step=1/S.fps;if(acc<step-.002)return;const dt=Math.min(acc,.05);acc=0;if(playing)update(paused?0:dt);R.render(sc,cam);
  if(snapCb){snapCb(R.domElement.toDataURL('image/jpeg',.85));snapCb=null}}
 function update(dt){
  const gas=keys.ArrowUp||keys.KeyW||inp.gas,brk=keys.ArrowDown||keys.KeyS||inp.brk,top=eff.top/3.6,kmh=Math.abs(P.v)*3.6;
@@ -129,7 +139,7 @@ function endJob(){job=null;beam.visible=false;$('#jobp').textContent=''}
 
 // ---------- Menus ----------
 function show(id){document.querySelectorAll('.scr').forEach(s=>s.classList.toggle('on',s.id===id))}
-function menu(){const live=playing;paused=live;$('#hud').style.display=$('#ctl').style.display='none';$('#bRes').style.display=live?'':'none';$('#stat').textContent=fmt(Save.data.money)+' · '+t('lvl')+' '+Save.level();show('menu');if(map)syncTraffic()}
+function menu(){const live=playing;paused=live;$('#hud').style.display=$('#ctl').style.display='none';$('#bRes').style.display=live?'':'none';$('#stat').textContent=fmt(Save.data.money)+' · '+t('lvl')+' '+Save.level();show('menu');if(map&&root&&playing)syncTraffic()}
 const refreshEff=()=>{eff=stats(pcfg,Save.data.tune[pcfg.id]);Snd.setCar(pcfg.id)};let cd=0;function crashFx(v=1){if(performance.now()-cd>600){cd=performance.now();Snd.play('crash',v)}}
 function applyLook(){const tn=Save.data.tune[pcfg.id]||{};if(tn.paint)player.traverse(o=>{if(o.isMesh&&/body|paint|exterior/i.test(o.material.name||'')){if(!o.userData.pc){o.material=o.material.clone();o.userData.pc=1}o.material.color.set(tn.paint)}});
  let n=player.getObjectByName('neon');if(tn.neon&&!n){n=new THREE.PointLight(0x00e5ff,6,8);n.name='neon';n.position.set(0,.25,0);player.add(n)}if(n)n.visible=!!tn.neon}
@@ -159,7 +169,8 @@ $('#bCam').onclick=()=>camMode=(camMode+1)%3;$('#bMenu').onclick=menu;$('#bPh').
 
 // ---------- Boot ----------
 phone=initPhone({notify:s=>toast('📩 '+s),ctx:()=>({n:Save.data.name,m:Save.data.money,l:Save.level(),car:pcfg.name,tuned:Object.values(Save.data.tune[pcfg.id]||{}).filter(v=>typeof v==='number').reduce((a,b)=>a+b,0)}),S,money:()=>Save.data.money,level:()=>Save.level(),pause:p=>paused=p,snap:cb=>snapCb=cb,startJob});
-Snd.init(S);document.addEventListener('click',e=>{if(e.target.closest('button,.app,.row'))Snd.play('click',.6)},true);$('#bHorn').onclick=()=>Snd.play('horn');
-(async()=>{pcfg=CARS.find(c=>c.id===Save.data.car);refreshEff();setLang(S.lang);gfx();buildCtl();const f=['maps/'+MAPS[0].file,...CARS.filter(c=>Save.data.owned.includes(c.id)).map(c=>'cars/'+c.file)];
- for(let i=0;i<f.length;i++){try{await load('assets/models/'+f[i])}catch{console.warn('missing',f[i])}prog((i+1)/f.length)}menu();tick()})();
+Snd.init(S);Snd.bindGesture(()=>phone.autoplay());document.addEventListener('click',e=>{if(e.target.closest('button,.app,.row'))Snd.play('click',.6)},true);$('#bHorn').onclick=()=>Snd.play('horn');
+(async()=>{pcfg=CARS.find(c=>c.id===Save.data.car);refreshEff();setLang(S.lang);gfx();buildCtl();menu();tick();   // menu is shown immediately
+ const f=['maps/'+MAPS[0].file,...CARS.filter(c=>Save.data.owned.includes(c.id)).map(c=>'cars/'+c.file)];            // background preload (map first)
+ for(const x of f){await new Promise(r=>setTimeout(r,300));try{await load('assets/models/'+x)}catch{console.warn('missing',x)}}})();
 if('serviceWorker'in navigator)navigator.serviceWorker.register('sw.js').catch(()=>{});
