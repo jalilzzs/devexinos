@@ -30,10 +30,27 @@ addEventListener('resize',gfx);
 // ---------- Assets (cached, auto-scaled to real-world size) ----------
 const GL=new GLTFLoader(),cache={};GL.setMeshoptDecoder(MeshoptDecoder);{const dr=new DRACOLoader();dr.setDecoderPath('https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/libs/draco/gltf/');GL.setDRACOLoader(dr)}const load=(u,cb)=>{let e=cache[u];if(!e){e=cache[u]={fr:0,ls:[]};e.p=new Promise((ok,no)=>GL.load(u,g=>{e.fr=1;e.ls.forEach(f=>f(1));ok(g.scene)},x=>{e.fr=x.total?x.loaded/x.total:Math.min(.95,e.fr+.02);e.ls.forEach(f=>f(e.fr))},er=>{delete cache[u];no(er)}))}
  if(cb){e.ls.push(cb);cb(e.fr)}return e.p};
+// Pure math (testable): flat xyz array -> yaw that puts the car's long axis on +Z, hood (lower end) at +Z, plus robust size.
+function fitPoints(P,flipCfg){const n=P.length/3;let mx=0,mz=0;for(let i=0;i<n;i++){mx+=P[i*3];mz+=P[i*3+2]}mx/=n;mz/=n;let cxx=0,czz=0,cxz=0;
+ for(let i=0;i<n;i++){const x=P[i*3]-mx,z=P[i*3+2]-mz;cxx+=x*x;czz+=z*z;cxz+=x*z}
+ const th=.5*Math.atan2(2*cxz,cxx-czz);let phi=Math.atan2(-Math.cos(th),Math.sin(th));
+ const X=new Float32Array(n),Y=new Float32Array(n),Z=new Float32Array(n);
+ const rot=()=>{const c=Math.cos(phi),s=Math.sin(phi);for(let i=0;i<n;i++){const x=P[i*3],z=P[i*3+2];X[i]=x*c+z*s;Z[i]=-x*s+z*c;Y[i]=P[i*3+1]}};
+ const q=(a,f)=>{const b=Float32Array.from(a).sort();return b[Math.round(f*(b.length-1))]};
+ rot();let z0=q(Z,.005),z1=q(Z,.995);const L0=z1-z0;let a=0,na=0,b=0,nb=0;
+ for(let i=0;i<n;i++){const t=(Z[i]-z0)/L0;if(t>.75){a+=Y[i];na++}else if(t<.25){b+=Y[i];nb++}}
+ let flip=na>0&&nb>0&&a/na>b/nb;if(flipCfg)flip=!flip;if(flip){phi+=Math.PI;rot()}
+ const x0=q(X,.005),x1=q(X,.995);z0=q(Z,.005);z1=q(Z,.995);const y0=q(Y,.005),y1=q(Y,.995);
+ return{phi,cx:(x0+x1)/2,cz:(z0+z1)/2,y0,y1,L:z1-z0,W:x1-x0}}
+const fitCache={};
+function carFit(m,id,flipCfg){if(fitCache[id])return fitCache[id];m.updateMatrixWorld(true);let tot=0;m.traverse(o=>{if(o.isMesh&&o.geometry.attributes.position)tot+=o.geometry.attributes.position.count});
+ const st=Math.max(1,Math.floor(tot/20000)),v=new THREE.Vector3(),P=[];
+ m.traverse(o=>{if(!o.isMesh||!o.geometry.attributes.position)return;const p=o.geometry.attributes.position;for(let i=0;i<p.count;i+=st){v.fromBufferAttribute(p,i).applyMatrix4(o.matrixWorld);P.push(v.x,v.y,v.z)}});
+ return fitCache[id]=fitPoints(P,flipCfg)}
 async function carModel(c,npc,cb){
- const m=(await load('assets/models/cars/'+c.file,cb)).clone(true),b=new THREE.Box3().setFromObject(m),s=b.getSize(new THREE.Vector3()),ct=b.getCenter(new THREE.Vector3());
- m.position.set(-ct.x,-b.min.y,-ct.z);const w=new THREE.Group();w.add(m);if(s.x>s.z)w.rotation.y=Math.PI/2;if(c.flip)w.rotation.y+=Math.PI;
- const k=c.len/Math.max(s.x,s.z);w.scale.setScalar(k);const g=new THREE.Group();g.add(w);g.rotation.order='YXZ';g.userData={len:c.len,h:s.y*k,wid:Math.min(s.x,s.z)*k};
+ const m=(await load('assets/models/cars/'+c.file,cb)).clone(true),f=carFit(m,c.id,c.flip),k=c.len/f.L;
+ const pv=new THREE.Group();pv.add(m);pv.rotation.y=f.phi;const w=new THREE.Group();w.add(pv);w.scale.setScalar(k);w.position.set(-f.cx*k,-f.y0*k,-f.cz*k);
+ const g=new THREE.Group();g.add(w);g.rotation.order='YXZ';g.userData={len:c.len,h:(f.y1-f.y0)*k,wid:f.W*k};
  m.traverse(o=>{if(o.isMesh){o.castShadow=!npc;if(npc)o.material=new THREE.MeshLambertMaterial({color:o.material.color||0xcccccc,map:o.material.map||null})}});return g}
 let pT=0,pD=0,spawnId=0;const prog=p=>{pT=p},frame=()=>new Promise(r=>requestAnimationFrame(()=>r()));
 
@@ -41,6 +58,14 @@ let pT=0,pD=0,spawnId=0;const prog=p=>{pT=p},frame=()=>new Promise(r=>requestAni
 let msgT=45;const TR=CARS.filter(c=>c.npc!==false);let eff=null,map=null,root=null,ground=null,chunks=[],player=null,pcfg=null,traffic=[],job=null,beam=null,camMode=0,paused=false,playing=false,snapCb=null,lvl=1;
 const P={x:0,z:0,h:0,v:0,s:0,hc:0,ay:0},M={cx:0,cz:0,B:100,gy:0};
 
+// Finds the real road/ground height: ray-cast down on a grid, take the most common surface level (roads/ground cover the most area), spawn on it.
+function findGround(root,b){const rc=new THREE.Raycaster(),o=new THREE.Vector3(),d=new THREE.Vector3(0,-1,0),pts=[],N=17,sp=Math.min(M.B*.6,350);
+ for(let i=0;i<N;i++)for(let j=0;j<N;j++){const x=M.cx+(i/(N-1)-.5)*2*sp,z=M.cz+(j/(N-1)-.5)*2*sp;rc.set(o.set(x,b.max.y+20,z),d);const h=rc.intersectObject(root,true)[0];if(h)pts.push({x,z,y:h.point.y})}
+ if(!pts.length)return{y:b.min.y+.02,x:M.cx,z:M.cz};
+ const bins={};pts.forEach(p=>{(bins[Math.round(p.y*2)]??=[]).push(p)});let best=null,bn=-1;
+ for(const k of Object.keys(bins).map(Number)){const c=[...(bins[k-1]||[]),...bins[k],...(bins[k+1]||[])];if(c.length>bn){bn=c.length;best=c}}
+ const gy=best.reduce((a,p)=>a+p.y,0)/best.length;best.sort((p,q)=>Math.hypot(p.x-M.cx,p.z-M.cz)-Math.hypot(q.x-M.cx,q.z-M.cz));
+ console.log('ground level',gy.toFixed(2),'from',pts.length,'rays');return{y:gy,x:best[0].x,z:best[0].z}}
 async function startMap(id){
  map=MAPS.find(m=>m.id===id);playing=false;pT=pD=0;$('#hud').style.display=$('#ctl').style.display='none';show('load');
  await frame();await frame();                                   // the loading screen is painted BEFORE any heavy work
@@ -51,13 +76,13 @@ async function startMap(id){
   if(root)sc.remove(root);if(ground)sc.remove(ground);
   root=raw.clone(true);let b=new THREE.Box3().setFromObject(root),sz=b.getSize(new THREE.Vector3());
   root.scale.setScalar(map.extent/Math.max(sz.x,sz.z));sc.add(root);root.updateMatrixWorld(true);b=new THREE.Box3().setFromObject(root);sz=b.getSize(new THREE.Vector3());
-  M.cx=(b.min.x+b.max.x)/2;M.cz=(b.min.z+b.max.z)/2;M.B=Math.max(sz.x,sz.z)/2*.96;M.gy=map.groundY??b.min.y+.02;
+  M.cx=(b.min.x+b.max.x)/2;M.cz=(b.min.z+b.max.z)/2;M.B=Math.max(sz.x,sz.z)/2*.96;const G=findGround(root,b);M.gy=map.groundY??G.y;
   ground=new THREE.Mesh(new THREE.PlaneGeometry(M.B*4,M.B*4),new THREE.MeshLambertMaterial({color:0x555a55}));ground.rotation.x=-Math.PI/2;ground.position.set(M.cx,M.gy-.06,M.cz);ground.receiveShadow=true;sc.add(ground);
   prog(.96);await frame();
   let nodes=root.children;while(nodes.length===1&&nodes[0].children.length>1)nodes=nodes[0].children;
   chunks=nodes.map(n=>{const bb=new THREE.Box3().setFromObject(n);return{n,c:bb.getCenter(new THREE.Vector3()),r:bb.getSize(new THREE.Vector3()).length()/2}});
   if(player)sc.remove(player);player=pm;sc.add(player);refreshEff();applyLook();
-  Object.assign(P,{x:M.cx,z:M.cz,h:0,hc:0,v:0,s:0});job=null;if(beam)beam.visible=false;lvl=Save.level();
+  Object.assign(P,{x:G.x,z:G.z,h:0,hc:0,v:0,s:0});job=null;if(beam)beam.visible=false;lvl=Save.level();
   traffic.forEach(n=>sc.remove(n.m));traffic=[];
   prog(1);await new Promise(r=>setTimeout(r,260));            // let the bar visibly reach 100%
   show(null);$('#hud').style.display='block';$('#ctl').style.display='flex';playing=true;paused=false;
@@ -73,9 +98,10 @@ const keys={};addEventListener('keydown',e=>{if(e.target.tagName==='INPUT')retur
 const inp={l:0,r:0,gas:0,brk:0,axis:0};let holding=false,wr=0,tiltRaw=null,tiltN=null,tiltF=0;
 const mkEl=(p,id,cls,html='')=>{const e=document.createElement('div');if(id)e.id=id;if(cls)e.className=cls;e.innerHTML=html;p.append(e);return e};
 function btn(p,cls,txt,k){const b=mkEl(p,'','pb '+cls,txt);b.onpointerdown=e=>{e.preventDefault();b.setPointerCapture(e.pointerId);inp[k]=1;b.classList.add('on')};b.onpointerup=b.onpointercancel=()=>{inp[k]=0;b.classList.remove('on')}}
+const IC=p=>`<svg viewBox="0 0 24 24">${p}</svg>`,I_L=IC('<path d="M14.5 5.5L8 12l6.5 6.5"/>'),I_R=IC('<path d="M9.5 5.5L16 12l-6.5 6.5"/>'),I_GAS=IC('<path d="M6 11l6-6 6 6M6 18l6-6 6 6"/>'),I_BRK=IC('<rect x="6.5" y="6.5" width="11" height="11" rx="2.5"/>');
 function buildCtl(){const L=$('#left'),Rr=$('#right');L.innerHTML=Rr.innerHTML='';inp.axis=0;wr=0;tiltN=null;
- btn(Rr,'red','⛔','brk');btn(Rr,'big','⛽','gas');
- if(S.ctrl==='arrows'){btn(L,'','◀','l');btn(L,'','▶','r')}
+ btn(Rr,'pedal brk',I_BRK,'brk');btn(Rr,'pedal gas',I_GAS,'gas');
+ if(S.ctrl==='arrows'){btn(L,'',I_L,'l');btn(L,'',I_R,'r')}
  else if(S.ctrl==='joystick'){const s=mkEl(L,'stick','','<div id="knob"></div>'),k=s.firstChild;const mv=e=>{const r=s.getBoundingClientRect();inp.axis=clamp((e.clientX-r.left-r.width/2)/(r.width/2-24),-1,1);k.style.transform=`translate(${inp.axis*38}px,0)`};
   s.onpointerdown=e=>{s.setPointerCapture(e.pointerId);mv(e)};s.onpointermove=e=>{if(s.hasPointerCapture(e.pointerId))mv(e)};s.onpointerup=s.onpointercancel=()=>{inp.axis=0;k.style.transform=''}}
  else if(S.ctrl==='wheel'){const w=mkEl(L,'wheel','','<i></i>');let a0=0,r0=0;const ang=e=>{const r=w.getBoundingClientRect();return Math.atan2(e.clientX-r.left-r.width/2,r.top+r.height/2-e.clientY)};
@@ -159,7 +185,7 @@ function tuneScr(id){const c=CARS.find(x=>x.id===id),d=Save.data,tn=d.tune[id]||
  $('#stat3').textContent=fmt(d.money);show('tune')}
 $('#tback').onclick=garage;
 function mapsMenu(){const l=$('#mapl');l.innerHTML='';MAPS.forEach(m=>{const b=document.createElement('button');b.textContent='🗺 '+m.name;b.onclick=()=>{Snd.unlock();if(S.ctrl==='tilt'&&DeviceOrientationEvent.requestPermission)DeviceOrientationEvent.requestPermission();buildCtl();playing=false;startMap(m.id)};l.append(b)});show('maps')}
-const sync=()=>{$('#sLang').value=S.lang;$('#sCtrl').value=S.ctrl;$('#sTr').value=S.traffic;$('#sTs').value=S.tspeed;$('#sMa').value=S.master;$('#sMu').value=S.music;$('#sSf').value=S.sfx;$('#sQ').value=S.quality;$('#sRes').value=S.scale;$('#sFps').value=S.fps;$('#sSh').checked=S.shadows;$('#sPo').checked=S.post};
+const sync=()=>{$('#sLang').value=S.lang;$('#sCtrl').value=S.ctrl;$('#sTr').value=S.traffic;$('#sTs').value=S.tspeed;$('#sMa').value=S.master;$('#sMu').value=S.music;$('#sSf').value=S.sfx;$('#sQ').value=S.quality;$('#sRes').value=S.scale;$('#sFps').value=S.fps;$('#sSh').checked=S.shadows;$('#sndinfo').textContent=Snd.info()+' · '+phone.info();$('#sPo').checked=S.post};
 $('#bPlay').onclick=mapsMenu;$('#bGar').onclick=garage;$('#bSet').onclick=()=>{sync();show('set')};$('#bRes').onclick=()=>{show(null);$('#hud').style.display='block';$('#ctl').style.display='flex';paused=false;buildCtl()};
 document.querySelectorAll('.x').forEach(b=>b.onclick=menu);
 const bind=(id,k,fn,num=true,ev='oninput')=>$(id)[ev]=e=>{const v=e.target;S[k]=v.type==='checkbox'?v.checked:num?+v.value:v.value;Save.write();fn&&fn()};
