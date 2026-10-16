@@ -61,11 +61,11 @@ const P={x:0,z:0,h:0,v:0,s:0,hc:0,ay:0},M={cx:0,cz:0,B:100,gy:0};
 
 // Finds the real road/ground height: ray-cast down on a grid, take the most common surface level (roads/ground cover the most area), spawn on it.
 function findGround(root,b){const rc=new THREE.Raycaster(),o=new THREE.Vector3(),d=new THREE.Vector3(0,-1,0),pts=[],N=17,sp=Math.min(M.B*.6,350);
- for(let i=0;i<N;i++)for(let j=0;j<N;j++){const x=M.cx+(i/(N-1)-.5)*2*sp,z=M.cz+(j/(N-1)-.5)*2*sp;rc.firstHitOnly=true;rc.set(o.set(x,b.max.y+20,z),d);const L=Ground.list(x,z),h=L&&(Ground.prep(L),rc.intersectObjects(L,false)[0]);if(h)pts.push({x,z,y:h.point.y})}
+ for(let i=0;i<N;i++)for(let j=0;j<N;j++){const x=M.cx+(i/(N-1)-.5)*2*sp,z=M.cz+(j/(N-1)-.5)*2*sp;rc.firstHitOnly=true;rc.set(o.set(x,b.max.y+20,z),d);const L=Ground.list(x,z),h=L&&(Ground.prep(L),rc.intersectObjects(L,false)[0]);if(h)pts.push({x,z,y:h.point.y,r:h})}
  if(!pts.length)return{y:b.min.y+.02,x:M.cx,z:M.cz};
  const bins={};pts.forEach(p=>{(bins[Math.round(p.y*2)]??=[]).push(p)});let best=null,bn=-1;
  for(const k of Object.keys(bins).map(Number)){const c=[...(bins[k-1]||[]),...bins[k],...(bins[k+1]||[])];if(c.length>bn){bn=c.length;best=c}}
- const gy=best.reduce((a,p)=>a+p.y,0)/best.length;best.sort((p,q)=>Math.hypot(p.x-M.cx,p.z-M.cz)-Math.hypot(q.x-M.cx,q.z-M.cz));
+ const gy=best.reduce((a,p)=>a+p.y,0)/best.length;Ground.calibrate(best.map(p=>p.r));best.sort((p,q)=>Math.hypot(p.x-M.cx,p.z-M.cz)-Math.hypot(q.x-M.cx,q.z-M.cz));
  console.log('ground level',gy.toFixed(2),'from',pts.length,'rays');return{y:gy,x:best[0].x,z:best[0].z}}
 async function startMap(id){
  map=MAPS.find(m=>m.id===id);playing=false;pT=pD=0;$('#hud').style.display=$('#ctl').style.display='none';show('load');
@@ -89,14 +89,27 @@ async function startMap(id){
   show(null);$('#hud').style.display='block';$('#ctl').style.display='flex';playing=true;paused=false;
   syncTraffic();                                               // NOT awaited: cars appear one by one while you already drive
  }catch(e){console.error(e);menu();$('#stat').textContent='⚠ '+(e.message||'load error')}}
-async function syncTraffic(){const my=++spawnId,n=Math.round(S.traffic*18);while(traffic.length>n)sc.remove(traffic.pop().m);
- while(traffic.length<n&&my===spawnId){const i=traffic.length,m=await carModel(TR[i%TR.length],true);if(my!==spawnId)return;sc.add(m);const o={m,i,d:i%2?1:-1,v:0,pass:false,tg:0,off:false,wait:0,dx:0,dz:1};traffic.push(o);place(o,true);await new Promise(r=>setTimeout(r,120))}}
-function place(n,init){n.v=(9+Math.random()*7)*S.tspeed;n.pass=false;
- for(let t=0;t<14;t++){const a=Math.random()*6.283,d=init?30+Math.random()*190:140+Math.random()*120,x=P.x+Math.sin(a)*d,z=P.z+Math.cos(a)*d,ax=Math.random()<.5,dx=ax?n.d:0,dz=ax?0:n.d;
-  let y=Ground.h(x,z,P.y,6,60);if(y===null||Math.abs(y-P.y)>8)continue;let py=y,ok=true;
-  for(let k=1;k<=5&&ok;k++){const yy=Ground.h(x+dx*15*k,z+dz*15*k,py,1.8,30);ok=yy!==null&&Math.abs(yy-py)<1.8;py=yy}   // 75 m of continuous road ahead
-  if(!ok)continue;n.dx=dx;n.dz=dz;n.m.position.set(x,y,z);n.m.rotation.y=Math.atan2(dx,dz);n.tg=y;n.off=false;n.m.visible=true;return}
- n.off=true;n.wait=1.5;n.m.visible=false}
+async function syncTraffic(){const my=++spawnId,n=Math.round(S.traffic*30);while(traffic.length>n)sc.remove(traffic.pop().m);
+ while(traffic.length<n&&my===spawnId){const i=traffic.length,m=await carModel(TR[i%TR.length],true);if(my!==spawnId)return;sc.add(m);const o={m,i,v:0,cv:0,a:0,at:0,tg:0,off:false,wait:0,pass:false,st:0};traffic.push(o);place(o,true);await new Promise(r=>setTimeout(r,60))}}
+// ---- traffic AI: cars only exist on road cells (asphalt colour + flat + free overhead), keep to the right lane, turn at junctions, U-turn at dead ends ----
+function edges(x,z,y,a){const f=sg=>{let miss=0;for(let d=1;d<=8;d++){const q=Ground.road(x+sg*Math.cos(a)*d,z-sg*Math.sin(a)*d,y);if(!q.ok){if(++miss>=2)return d-1}else miss=0}return 8};return{r:f(1),l:f(-1)}}
+function think(n){const p=n.m.position,y=p.y,a=n.a,hr=Ground.h(p.x,p.z,y,1.1,12);if(hr===null||hr-y>1.1||y-hr>5){place(n);return}n.tg=hr;
+ const ok=(ang,dist)=>{const q=Ground.road(p.x+Math.sin(ang)*dist,p.z+Math.cos(ang)*dist,y);return q.ok&&Math.abs(q.y-y)<.25*dist+.5};
+ let best=null;for(const d of Math.random()<.5?[0,.3,-.3,.6,-.6,1.57,-1.57]:[0,-.3,.3,-.6,.6,-1.57,1.57])if(ok(a+d,9)&&ok(a+d,15)){best=d;break}
+ if(best===null){if(ok(a+Math.PI,9))best=Math.PI;else{place(n);return}}
+ const e=edges(p.x,p.z,y,a+(Math.abs(best)<1?best:0));let steer=0;const w=e.l+e.r;if(Math.abs(best)<1&&w>3&&w<22)steer=clamp((e.r-w*.28)*.08,-.35,.35);   // right-lane centring
+ if(best===0&&w>18&&Math.random()<.04){const t=[1.57,-1.57].find(d=>ok(a+d,9)&&ok(a+d,15));if(t!==undefined)best=t}                                          // random turns at wide junctions
+ n.at=a+best+steer;let lim=n.v;const sa=Math.sin(a),ca=Math.cos(a);
+ for(const o of traffic){if(o===n||o.off)continue;const dx=o.m.position.x-p.x,dz=o.m.position.z-p.z,f=dx*sa+dz*ca;if(f>0&&f<11&&Math.abs(dx*ca-dz*sa)<2.4)lim=Math.min(lim,f<5?0:o.cv*.9)}
+ {const dx=P.x-p.x,dz=P.z-p.z,f=dx*sa+dz*ca;if(f>0&&f<12&&Math.abs(dx*ca-dz*sa)<2.4&&Math.abs(P.y-y)<2.5)lim=Math.min(lim,f<6?0:Math.max(0,P.v)*.9)}
+ n.lim=lim;if(Ground.wall(p.x,y,p.z,sa,ca,6,1)){n.at=a+Math.PI;n.cv*=.5}}
+function place(n,init){n.pass=false;
+ for(let t=0;t<30;t++){const a0=Math.random()*6.283,d=init?30+Math.random()*190:130+Math.random()*110,x=P.x+Math.sin(a0)*d,z=P.z+Math.cos(a0)*d,r0=Ground.road(x,z,P.y);
+  if(!r0.ok||Math.abs(r0.y-P.y)>9)continue;let ba=0,bl=0;
+  for(let k=0;k<12;k++){const a=k*.5236+Math.random()*.1;let l=0;for(let q=10;q<=50;q+=10){const c=Ground.road(x+Math.sin(a)*q,z+Math.cos(a)*q,r0.y);if(c.ok&&Math.abs(c.y-r0.y)<.3*q+.5)l=q;else break}if(l>bl){bl=l;ba=a}}
+  if(bl<30)continue;const e=edges(x,z,r0.y,ba),w=e.l+e.r,off=w>3?clamp(e.r-w*.28,-4,4):0;
+  n.a=n.at=ba;n.v=n.cv=n.lim=(9+Math.random()*7)*S.tspeed;n.st=0;n.m.position.set(x+Math.cos(ba)*off,r0.y,z-Math.sin(ba)*off);n.m.rotation.y=ba;n.tg=r0.y;n.off=false;n.m.visible=true;return}
+ n.off=true;n.wait=.4;n.m.visible=false}
 
 // ---------- Input ----------
 const keys={};addEventListener('keydown',e=>{if(e.target.tagName==='INPUT')return;keys[e.code]=1;if(e.code==='KeyH')Snd.play('horn');if(e.code==='KeyC')camMode=(camMode+1)%3});addEventListener('keyup',e=>keys[e.code]=0);
@@ -156,10 +169,12 @@ function update(dt){
  frameN++;
  for(const n of traffic){
   if(n.off){if((n.wait-=dt)<=0)place(n);continue}
-  const ps=n.m.position;ps.x+=n.dx*n.v*dt;ps.z+=n.dz*n.v*dt;const dx=ps.x-P.x,dz=ps.z-P.z,d=Math.hypot(dx,dz);
-  if(dt&&(frameN+n.i)%3===0){const hy=Ground.h(ps.x,ps.z,ps.y,1.1,40);if(hy===null||hy-ps.y>1.1||ps.y-hy>5){place(n);continue}n.tg=hy}   // same surface logic as the player
-  ps.y+=(n.tg-ps.y)*Math.min(1,dt*8);
-  if(d>280||Math.abs(ps.x-M.cx)>M.B||Math.abs(ps.z-M.cz)>M.B){place(n);continue}
+  const ps=n.m.position;if(dt&&(frameN+n.i)%3===0)think(n);if(n.off)continue;
+  const da=angd(n.at,n.a);n.a+=clamp(da,-1.8*dt,1.8*dt);n.cv+=(Math.min(n.v,n.lim)*(1-.45*Math.min(1,Math.abs(da)))-n.cv)*Math.min(1,dt*2);
+  ps.x+=Math.sin(n.a)*n.cv*dt;ps.z+=Math.cos(n.a)*n.cv*dt;n.m.rotation.y=n.a;ps.y+=(n.tg-ps.y)*Math.min(1,dt*8);
+  if(dt){if(n.cv<.3){if((n.st+=dt)>6){place(n);continue}}else n.st=0}
+  const dx=ps.x-P.x,dz=ps.z-P.z,d=Math.hypot(dx,dz);
+  if(d>300||Math.abs(ps.x-M.cx)>M.B||Math.abs(ps.z-M.cz)>M.B){place(n);continue}
   const near=Math.abs(ps.y-P.y)<2.5;
   if(d<2.7&&dt&&near){const nx=-dx/(d||1),nz=-dz/(d||1);P.x+=nx*(2.7-d);P.z+=nz*(2.7-d);P.v*=.55;crashFx()}
   else if(near&&!n.pass&&P.v>12){const lat=dx*Math.cos(P.h)-dz*Math.sin(P.h),lon=dx*Math.sin(P.h)+dz*Math.cos(P.h);
