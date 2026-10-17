@@ -72,13 +72,13 @@ function rigWheels(m,wp,f){m.updateMatrixWorld(true);const c=Math.cos(f.phi),s=M
  return out}
 async function carModel(c,npc,cb){
  const m=(await load('assets/models/cars/'+c.file,cb)).clone(true),fl=!!c.flip!==!!(Save.data.flip&&Save.data.flip[c.id]),f=carFit(m,c.id+fl,fl),k=c.len/f.L;
- const wp=new THREE.Group(),ws=npc?[]:rigWheels(m,wp,f),pv=new THREE.Group();pv.add(m,wp);pv.rotation.y=f.phi;const w=new THREE.Group();w.add(pv);w.scale.setScalar(k);w.position.set(-f.cx*k,-f.y0*k,-f.cz*k);
+ const wp=new THREE.Group(),ws=rigWheels(m,wp,f),pv=new THREE.Group();pv.add(m,wp);pv.rotation.y=f.phi;const w=new THREE.Group();w.add(pv);w.scale.setScalar(k);w.position.set(-f.cx*k,-f.y0*k,-f.cz*k);
  const g=new THREE.Group();g.add(w);g.rotation.order='YXZ';g.userData={len:c.len,h:(f.y1-f.y0)*k,wid:f.W*k,wheels:ws};
- m.traverse(o=>{if(o.isMesh){o.castShadow=!npc;if(npc)o.material=new THREE.MeshLambertMaterial({color:o.material.color||0xcccccc,map:o.material.map||null})}});return g}
+ [m,wp].forEach(r=>r.traverse(o=>{if(o.isMesh){o.castShadow=!npc;if(npc)o.material=new THREE.MeshLambertMaterial({color:o.material.color||0xcccccc,map:o.material.map||null})}}));return g}
 let pT=0,pD=0,spawnId=0;const prog=p=>{pT=p},frame=()=>new Promise(r=>requestAnimationFrame(()=>r()));
 
 // ---------- State ----------
-let msgT=45,frameN=0,droneOn=false,prevCam=0;const TR=CARS.filter(c=>c.npc!==false);let eff=null,map=null,root=null,ground=null,chunks=[],player=null,pcfg=null,traffic=[],job=null,beam=null,camMode=0,paused=false,playing=false,snapCb=null,lvl=1;
+let msgT=45,frameN=0,tokens=60,droneOn=false,prevCam=0;const TR=CARS.filter(c=>c.npc!==false);let eff=null,map=null,root=null,ground=null,chunks=[],player=null,pcfg=null,traffic=[],job=null,beam=null,camMode=0,paused=false,playing=false,snapCb=null,lvl=1;
 const P={x:0,z:0,h:0,v:0,s:0,hc:0,ay:0},M={cx:0,cz:0,B:100,gy:0};
 
 // Finds the real road/ground height: ray-cast down on a grid, take the most common surface level (roads/ground cover the most area), spawn on it.
@@ -105,13 +105,13 @@ async function startMap(id){
   let nodes=root.children;while(nodes.length===1&&nodes[0].children.length>1)nodes=nodes[0].children;
   chunks=nodes.map(n=>{const bb=new THREE.Box3().setFromObject(n);return{n,c:bb.getCenter(new THREE.Vector3()),r:bb.getSize(new THREE.Vector3()).length()/2}});
   if(player)sc.remove(player);player=pm;sc.add(player);refreshEff();applyLook();
-  Object.assign(P,{x:G.x,z:G.z,y:G.y,vy:0,pt:0,h:0,hc:0,v:0,s:0});Quests.reset();lvl=Save.level();
+  Object.assign(P,{x:G.x,z:G.z,y:G.y,vy:0,pt:0,h:0,hc:0,v:0,s:0});Quests.reset();tokens=60;lvl=Save.level();
   traffic.forEach(n=>sc.remove(n.m));traffic=[];
   prog(1);await new Promise(r=>setTimeout(r,260));            // let the bar visibly reach 100%
   show(null);$('#hud').style.display='block';$('#ctl').style.display='flex';playing=true;paused=false;
   syncTraffic();                                               // NOT awaited: cars appear one by one while you already drive
  }catch(e){console.error(e);menu();$('#stat').textContent='⚠ '+(e.message||'load error')}}
-async function syncTraffic(){const my=++spawnId,n=Math.round(S.traffic*50);while(traffic.length>n)sc.remove(traffic.pop().m);
+async function syncTraffic(){const my=++spawnId,n=Math.round(S.traffic*60);while(traffic.length>n)sc.remove(traffic.pop().m);
  while(traffic.length<n&&my===spawnId){const i=traffic.length,m=await carModel(TR[i%TR.length],true);if(my!==spawnId)return;sc.add(m);const o={m,i,v:0,cv:0,a:0,at:0,tg:0,off:false,wait:0,pass:false,st:0,bad:0,turnT:0,pref:Math.random()<.5?1:-1};traffic.push(o);place(o,true);await new Promise(r=>setTimeout(r,60))}}
 // ---- traffic AI: cars only exist on road cells (asphalt colour + flat + free overhead), keep to the right lane, turn at junctions, U-turn at dead ends ----
 function edges(x,z,y,a){const f=sg=>{let miss=0;for(let d=1;d<=8;d++){const q=Ground.road(x-sg*Math.cos(a)*d,z+sg*Math.sin(a)*d,y);if(!q.ok){if(++miss>=2)return d-1}else miss=0}return 8};return{r:f(1),l:f(-1)}}
@@ -126,12 +126,12 @@ function think(n,dt3){const p=n.m.position,y=p.y,a=n.a,hr=Ground.h(p.x,p.z,y,1.1
  for(const o of traffic){if(o===n||o.off)continue;const dx=o.m.position.x-p.x,dz=o.m.position.z-p.z,f=dx*sa+dz*ca;if(f>0&&f<12&&Math.abs(dx*ca-dz*sa)<2.4)lim=Math.min(lim,f<5?0:o.cv*.9)}
  {const dx=P.x-p.x,dz=P.z-p.z,f=dx*sa+dz*ca;if(f>0&&f<12&&Math.abs(dx*ca-dz*sa)<2.4&&Math.abs(P.y-y)<2.5)lim=Math.min(lim,f<6?0:Math.max(0,P.v)*.9)}
  n.lim=lim;if(Ground.wall(p.x,y,p.z,sa,ca,6,1)){n.at=a+Math.PI;n.cv*=.5}}
-function place(n,init){n.pass=false;
+function place(n,init){n.pass=false;if(tokens<1){n.off=true;n.wait=.5;n.m.visible=false;return}
  for(let t=0;t<60;t++){const a0=Math.random()*6.283,d=init?30+Math.random()*190:130+Math.random()*110,x=P.x+Math.sin(a0)*d,z=P.z+Math.cos(a0)*d,r0=Ground.road(x,z,P.y);
-  if(!r0.ok||Math.abs(r0.y-P.y)>9||Math.hypot(x-P.x,z-P.z)<20)continue;let ba=0,bl=0;
-  for(let k=0;k<12;k++){const a=k*.5236+Math.random()*.1;let l=0;for(let q=10;q<=50;q+=10){const c=Ground.road(x+Math.sin(a)*q,z+Math.cos(a)*q,r0.y);if(c.ok&&Math.abs(c.y-r0.y)<.3*q+.5)l=q;else break}if(l>bl){bl=l;ba=a}}
+  if(!r0.ok||Math.abs(r0.y-P.y)>9||Math.hypot(x-P.x,z-P.z)<20)continue;let ba=0,bl=0;const tx=P.x-x,tz=P.z-z,tl=Math.hypot(tx,tz)||1;
+  for(let k=0;k<12;k++){const a=k*.5236+Math.random()*.1;let l=0;for(let q=10;q<=50;q+=10){const c=Ground.road(x+Math.sin(a)*q,z+Math.cos(a)*q,r0.y);if(c.ok&&Math.abs(c.y-r0.y)<.3*q+.5)l=q;else break}if(l>bl&&(Math.sin(a)*tx+Math.cos(a)*tz)/tl>.25){bl=l;ba=a}}
   if(bl<30)continue;const e=edges(x,z,r0.y,ba),w=e.l+e.r,off=w>3?clamp(e.r-w*.28,-4,4):0;
-  n.a=n.at=ba;n.v=n.cv=n.lim=(9+Math.random()*7)*S.tspeed;n.st=0;n.bad=0;n.turnT=0;n.m.position.set(x-Math.cos(ba)*off,r0.y,z+Math.sin(ba)*off);n.m.rotation.y=ba;n.tg=r0.y;n.off=false;n.m.visible=true;return}
+  n.a=n.at=ba;n.v=n.cv=n.lim=(9+Math.random()*7)*S.tspeed;n.st=0;n.bad=0;n.turnT=0;n.m.position.set(x-Math.cos(ba)*off,r0.y,z+Math.sin(ba)*off);n.m.rotation.y=ba;n.tg=r0.y;n.off=false;n.m.visible=true;tokens--;return}
  n.off=true;n.wait=.25;n.m.visible=false}
 
 // ---------- Input ----------
@@ -170,7 +170,7 @@ function update(dt){
  const gas=keys.ArrowUp||keys.KeyW||inp.gas,brk=keys.ArrowDown||keys.KeyS||inp.brk,top=eff.top/3.6,kmh=Math.abs(P.v)*3.6;
  if(brk&&P.v>14&&!P.bk){Snd.play('brake',.8);P.bk=1}if(!brk)P.bk=0;
  // longitudinal: power-limited accel (P/mv) capped by traction, quadratic drag to hit top speed
- if(dt&&!droneOn){let a=0;
+ if(dt&&!droneOn&&!foot.on){let a=0;
   if(gas&&P.v>=-.3)a=Math.min(2.5+eff.torque/eff.weight*12,eff.hp*745*.8/(eff.weight*Math.max(P.v,3.5)))*(1-Math.pow(P.v/top,2));
   else if(brk&&P.v>.5)a=-9*eff.brake;else if(brk)a=-3*(1+P.v/-8);          // brake, then reverse (max ~8 m/s)
   else if(gas)a=9;                                                // gas while rolling backwards = brake
@@ -196,16 +196,16 @@ function update(dt){
  player.position.set(P.x,P.y,P.z);player.rotation.x=-P.pt;player.rotation.y=P.h;for(const w of player.userData.wheels||[])w.rotation.y=w.userData.rest-P.s*.5;player.rotation.z=clamp(-P.ay*.006,-.05,.05);
  const sn=80/smSize;V.set(Math.round(P.x/sn)*sn,P.y,Math.round(P.z/sn)*sn);sun.target.position.copy(V);sun.position.set(V.x+80,P.y+120,V.z+40); // texel-snapped shadows (no shimmer)
  for(const c of chunks)c.n.visible=V.set(c.c.x-P.x,0,c.c.z-P.z).length()-c.r<map.cullDist;
- frameN++;
+ frameN++;tokens=Math.min(40,tokens+dt);   // 1 respawn/second at most = max 60 cars passing you per minute
  for(const n of traffic){
   if(n.off){if((n.wait-=dt)<=0)place(n);continue}
   const ps=n.m.position;if(dt&&(frameN+n.i)%3===0)think(n,dt*3);if(n.off)continue;
   const da=angd(n.at,n.a);n.a+=clamp(da,-1.4*dt,1.4*dt);n.cv+=(Math.min(n.v,n.lim)*(1-.45*Math.min(1,Math.abs(da)))-n.cv)*Math.min(1,dt*2);
-  ps.x+=Math.sin(n.a)*n.cv*dt;ps.z+=Math.cos(n.a)*n.cv*dt;n.m.rotation.y=n.a;ps.y+=(n.tg-ps.y)*Math.min(1,dt*8);
+  ps.x+=Math.sin(n.a)*n.cv*dt;ps.z+=Math.cos(n.a)*n.cv*dt;n.m.rotation.y=n.a;for(const w of n.m.userData.wheels||[])w.rotation.y=w.userData.rest+clamp(da,-.6,.6)*.6;ps.y+=(n.tg-ps.y)*Math.min(1,dt*8);
   if(dt){if(n.cv<.3){if((n.st+=dt)>6){place(n);continue}}else n.st=0}
   const dx=ps.x-P.x,dz=ps.z-P.z,d=Math.hypot(dx,dz);n.m.visible=d<150;   // far cars are simulated but not drawn
   if(d>300||Math.abs(ps.x-M.cx)>M.B||Math.abs(ps.z-M.cz)>M.B){place(n);continue}
-  const near=!droneOn&&Math.abs(ps.y-P.y)<2.5;
+  const near=!droneOn&&!foot.on&&Math.abs(ps.y-P.y)<2.5;
   if(d<2.7&&dt&&near){const nx=-dx/(d||1),nz=-dz/(d||1);P.x+=nx*(2.7-d);P.z+=nz*(2.7-d);P.v*=.55;crashFx()}
   else if(near&&!n.pass&&P.v>12){const lat=dx*Math.cos(P.h)-dz*Math.sin(P.h),lon=dx*Math.sin(P.h)+dz*Math.cos(P.h);
    if(Math.abs(lat)<2.8&&Math.abs(lon)<3){n.pass=true;const c=Math.abs(lat)<1.9,v=c?1200:600;addMoney(v);Snd.play(c?'cash':'pass');toast((c?t('near')+' ':'')+'+'+v+' '+t('cur'))}}}
@@ -214,14 +214,16 @@ function update(dt){
  Snd.engine(kmh,!!gas,eff.top,dt>0);
  // cameras: heading-damped chase (no stitching), frame-rate independent smoothing
  const len=pcfg.len,h=player.userData.h;P.hc+=angd(P.h,P.hc)*(1-Math.exp(-5*dt));const sx=Math.sin(P.h),sz=Math.cos(P.h);
+ if(foot.on&&dt)footStep(dt);
  if(droneOn){droneCam(dt)}
+ else if(foot.on){footCam(dt)}
  else if(camMode===0){const dist=len*1.5+3.2+kmh*.012;orb.yaw=angd(orb.yaw,0);if(!orb.drag&&(orb.t+=dt)>2.2){const k=1-Math.exp(-3*dt);orb.yaw-=orb.yaw*k;orb.pitch-=orb.pitch*k}
   const ang=P.hc+orb.yaw,cp=Math.cos(orb.pitch);V.set(P.x-Math.sin(ang)*cp*dist,P.y+h+1.1+len*.12+Math.sin(orb.pitch)*dist,P.z-Math.cos(ang)*cp*dist);
   cam.position.lerp(V,dt?1-Math.exp(-(orb.drag?20:11)*dt):1);const lk=3*Math.max(0,1-Math.abs(orb.yaw)*2);cam.lookAt(P.x+sx*lk,P.y+h*.8,P.z+sz*lk);cam.fov+=(62+kmh*.12-cam.fov)*Math.min(1,dt*3)}
  else if(camMode===1){cam.position.set(P.x+sz*.38+sx*.1,P.y+h*.82,P.z-sx*.38+sz*.1);cam.lookAt(P.x+sx*12-P.s*sz*2,P.y+h*.8,P.z+sz*12+P.s*sx*2);cam.fov=70}
  else if(camMode===3){cam.position.set(fc.x,fc.y,fc.z);const cp=Math.cos(fc.pitch);cam.lookAt(fc.x+Math.sin(fc.yaw)*cp,fc.y+Math.sin(fc.pitch),fc.z+Math.cos(fc.yaw)*cp);cam.fov=65}
  else{const a=performance.now()/5000;V.set(P.x+Math.sin(a)*(len*2+4),P.y+1.6+Math.sin(a*.7),P.z+Math.cos(a)*(len*2+4));cam.position.lerp(V,dt?1-Math.exp(-3*dt):1);cam.lookAt(P.x,P.y+h*.6,P.z);cam.fov=55}
- cam.updateProjectionMatrix();player.visible=droneOn||camMode!==1;
+ cam.updateProjectionMatrix();player.visible=droneOn||foot.on||camMode!==1;
  const nl=Save.level();if(nl>lvl){lvl=nl;Snd.play('levelup');const bn=15000*nl;Save.data.money+=bn;toast('⬆ '+t('lvl')+' '+nl+' · +'+bn+' '+t('cur'))}}
 function addMoney(v,xp=v/60){Save.data.money+=v;Save.data.xp+=xp}   // fast progression: 600 DA pass = 10 XP, level 2 at 40 XP
 function toast(s){const e=$('#toast');e.textContent=s;clearTimeout(e._t);e._t=setTimeout(()=>e.textContent='',1400);Save.write()}
@@ -256,10 +258,33 @@ function droneCam(dt){const K=k=>keys[k]?1:0,fwd=(dk.f||K('KeyW')||K('ArrowUp')?
  drone.x=clamp(drone.x+drone.vx*dt,M.cx-M.B,M.cx+M.B);drone.z=clamp(drone.z+drone.vz*dt,M.cz-M.B,M.cz+M.B);drone.y=Math.min(P.y+150,drone.y+drone.vy*dt);
  const g=Ground.h(drone.x,drone.z,drone.y,0,300);if(g!==null)drone.y=Math.max(drone.y,g+1.5);                       // never flies through the ground
  cam.position.set(drone.x,drone.y,drone.z);const cp=Math.cos(drone.pitch);cam.lookAt(drone.x+Math.sin(drone.yaw)*cp,drone.y+Math.sin(drone.pitch),drone.z+Math.cos(drone.yaw)*cp);cam.fov=75}
+function mkPerson(){const g=new THREE.Group(),M=c=>new THREE.MeshLambertMaterial({color:c}),b=(w,h,d,c,x,y,z)=>{const m=new THREE.Mesh(new THREE.BoxGeometry(w,h,d),M(c));m.position.set(x,y,z);m.castShadow=true;return m},
+ limb=(x,y,w,h,c)=>{const p=new THREE.Group();p.position.set(x,y,0);p.add(b(w,h,w+.04,c,0,-h/2,0));return p};
+ g.add(b(.5,.62,.28,0x0a7b3e,0,1.25,0));const hd=new THREE.Mesh(new THREE.SphereGeometry(.15,10,8),M(0xe0b08c));hd.position.y=1.72;hd.castShadow=true;g.add(hd);
+ const L=limb(-.13,.92,.2,.92,0x2b3a55),R=limb(.13,.92,.2,.92,0x2b3a55),AL=limb(-.34,1.52,.14,.64,0x0a7b3e),AR=limb(.34,1.52,.14,.64,0x0a7b3e);g.add(L,R,AL,AR);g.userData={L,R,AL,AR};return g}
+// ---- On foot: get out of the car (🚶), walk with the stick, drag to look, walk back to the car and press the car button ----
+const foot={on:false,x:0,y:0,z:0,h:0,v:0,vy:0,cy:0,sx:0,sy:0,ph:0,m:null};
+const I_CAR=IC('<path d="M5 16l1.5-5h11L19 16M4 16h16v3H4zM7 19v1.5M17 19v1.5"/>');
+function exitCar(force){if(foot.on||droneOn||!playing)return foot.on;if(!force&&Math.abs(P.v)*3.6>12){toast('⚠ '+t('slowfirst'));return false}P.v=0;
+ Object.assign(foot,{on:true,x:P.x+Math.cos(P.h)*2.1+Math.sin(P.h)*.5,y:P.y,z:P.z-Math.sin(P.h)*2.1+Math.cos(P.h)*.5,h:P.h,cy:P.h,v:0,vy:0,sx:0,sy:0});
+ if(!foot.m){foot.m=mkPerson();sc.add(foot.m)}foot.m.visible=true;document.body.classList.add('foot');return true}
+function enterCar(){if(!foot.on)return;if(Math.hypot(foot.x-P.x,foot.z-P.z)>6.5){toast('⚠ '+t('gocar'));return}foot.on=false;foot.m.visible=false;document.body.classList.remove('foot')}
+function footStep(dt){const sx=foot.sx,sy=foot.sy,mag=Math.min(1,Math.hypot(sx,sy)),tv=mag>.08?mag*(mag>.85?5.6:3.2):0;foot.v+=(tv-foot.v)*Math.min(1,dt*8);
+ if(mag>.08){const cy=foot.cy,dx=Math.sin(cy)*sy-Math.cos(cy)*sx,dz=Math.cos(cy)*sy+Math.sin(cy)*sx,l=Math.hypot(dx,dz)||1,ux=dx/l,uz=dz/l,st=foot.v*dt;
+  foot.h+=angd(Math.atan2(ux,uz),foot.h)*Math.min(1,dt*10);if(!Ground.wall(foot.x,foot.y,foot.z,ux,uz,.45+st,.22)){foot.x+=ux*st;foot.z+=uz*st}else foot.v=0}
+ foot.x=clamp(foot.x,M.cx-M.B,M.cx+M.B);foot.z=clamp(foot.z,M.cz-M.B,M.cz+M.B);
+ const g=Ground.h(foot.x,foot.z,foot.y,.6,40,.6);if(g!==null&&(g>=foot.y-.2||foot.y-g<.3)){foot.y+=(g-foot.y)*Math.min(1,dt*14);foot.vy=0}else{foot.vy-=25*dt;foot.y+=foot.vy*dt;if(g!==null&&foot.y<g){foot.y=g;foot.vy=0}}
+ if(foot.y<M.sy-60){foot.x=P.x;foot.y=P.y;foot.z=P.z}
+ const m=foot.m,u=m.userData;m.position.set(foot.x,foot.y,foot.z);m.rotation.y=foot.h;foot.ph+=foot.v*dt*2.4;const sw=Math.sin(foot.ph)*Math.min(1,foot.v/4)*.9;u.L.rotation.x=sw;u.R.rotation.x=-sw;u.AL.rotation.x=-sw;u.AR.rotation.x=sw;
+ $('#fEnter').classList.toggle('show',Math.hypot(foot.x-P.x,foot.z-P.z)<6.5)}
+function footCam(dt){const d=4.6,pt=orb.pitch+.25,cp=Math.cos(pt);V.set(foot.x-Math.sin(foot.cy)*cp*d,foot.y+1.9+Math.sin(pt)*d,foot.z-Math.cos(foot.cy)*cp*d);cam.position.lerp(V,dt?1-Math.exp(-14*dt):1);cam.lookAt(foot.x,foot.y+1.3,foot.z);cam.fov=62}
+function buildFoot(){const d=$('#footui');d.innerHTML=`<div class="fstick"><div class="fknob"></div></div><div class="pb fenter" id="fEnter">${I_CAR}</div>`;const s=d.querySelector('.fstick'),k=s.firstChild;
+ const mv=e=>{const r=s.getBoundingClientRect(),R2=r.width/2-20,x=clamp((e.clientX-r.left-r.width/2)/R2,-1,1),y=clamp(-(e.clientY-r.top-r.height/2)/R2,-1,1),l=Math.hypot(x,y),q=l>1?1/l:1;foot.sx=x*q;foot.sy=y*q;k.style.transform=`translate(${foot.sx*38}px,${-foot.sy*38}px)`};
+ s.onpointerdown=e=>{s.setPointerCapture(e.pointerId);mv(e)};s.onpointermove=e=>{if(s.hasPointerCapture(e.pointerId))mv(e)};s.onpointerup=s.onpointercancel=()=>{foot.sx=foot.sy=0;k.style.transform=''};$('#fEnter').onclick=enterCar}
 // ---- Orbit: drag on the screen while in the follow camera to swing around the car; it keeps following and eases back behind the car ----
 const orb={yaw:0,pitch:0,t:0,drag:false};let oid=null,ox=0,oy=0;
-{const cv=R.domElement;cv.addEventListener('pointerdown',e=>{if(camMode!==0||droneOn)return;oid=e.pointerId;ox=e.clientX;oy=e.clientY;orb.drag=true;cv.setPointerCapture(e.pointerId)});
- cv.addEventListener('pointermove',e=>{if(e.pointerId!==oid)return;orb.yaw-=(e.clientX-ox)*.006;orb.pitch=clamp(orb.pitch+(e.clientY-oy)*.004,-.05,1.2);ox=e.clientX;oy=e.clientY;orb.t=0});
+{const cv=R.domElement;cv.addEventListener('pointerdown',e=>{if((camMode!==0&&!foot.on)||droneOn)return;oid=e.pointerId;ox=e.clientX;oy=e.clientY;orb.drag=true;cv.setPointerCapture(e.pointerId)});
+ cv.addEventListener('pointermove',e=>{if(e.pointerId!==oid)return;if(foot.on)foot.cy-=(e.clientX-ox)*.006;else orb.yaw-=(e.clientX-ox)*.006;orb.pitch=clamp(orb.pitch+(e.clientY-oy)*.004,-.05,1.2);ox=e.clientX;oy=e.clientY;orb.t=0});
  const end=e=>{if(e.pointerId===oid){oid=null;orb.drag=false;orb.t=0}};cv.addEventListener('pointerup',end);cv.addEventListener('pointercancel',end)}
 // ---------- Menus ----------
 function show(id){document.querySelectorAll('.scr').forEach(s=>s.classList.toggle('on',s.id===id))}
@@ -293,7 +318,7 @@ $('#bCam').onclick=()=>setCam((camMode+1)%4);$('#bMenu').onclick=menu;$('#bPh').
 
 // ---------- Boot ----------
 phone=initPhone({quests:Quests,drone:startDrone,notify:s=>toast('📩 '+s),ctx:()=>({n:Save.data.name,m:Save.data.money,l:Save.level(),car:pcfg.name,tuned:Object.values(Save.data.tune[pcfg.id]||{}).filter(v=>typeof v==='number').reduce((a,b)=>a+b,0)}),S,money:()=>Save.data.money,level:()=>Save.level(),pause:p=>paused=p,snap:cb=>snapCb=cb,startJob});
-Quests.init({scene:sc,P,M,Ground,Snd,toast,addMoney,level:()=>Save.level(),hud:$('#jobp')});buildDrone();R.domElement.addEventListener('pointerdown',()=>{if(droneOn)flashHi()});Snd.init(S);Snd.bindGesture(()=>phone.autoplay());
+Quests.init({foot,goFoot:()=>foot.on||exitCar(true),onFoot:()=>foot.on,scene:sc,P,M,Ground,Snd,toast,addMoney,level:()=>Save.level(),hud:$('#jobp')});buildDrone();buildFoot();$('#bFoot').onclick=()=>foot.on?enterCar():exitCar();R.domElement.addEventListener('pointerdown',()=>{if(droneOn)flashHi()});Snd.init(S);Snd.bindGesture(()=>phone.autoplay());
 for(const ev of['contextmenu','selectstart','gesturestart','gesturechange','gestureend'])document.addEventListener(ev,e=>{if(!(e.target.closest&&e.target.closest('input,textarea')))e.preventDefault()},{passive:false});   // no Copy/Look Up menu, no pinch-zoom
 {let lt=0;document.addEventListener('touchend',e=>{const n=Date.now();if(n-lt<350&&!(e.target.closest&&e.target.closest('button,input,select,textarea,.pb,.db,.ib,.row,.app,.card')))e.preventDefault();lt=n},{passive:false});   // double-tap zoom
  document.addEventListener('touchmove',e=>{if(e.touches.length>1)e.preventDefault()},{passive:false});                                                                                                          // two-finger pinch
