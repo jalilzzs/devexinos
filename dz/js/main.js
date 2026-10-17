@@ -7,6 +7,7 @@ import {t,setLang} from './i18n.js';
 import {initPhone} from './phone.js';
 import {Snd} from './audio.js';
 import {Ground} from './ground.js';
+import {Quests} from './quests.js';
 import {stats,PARTS,PAINTS,cost} from './tuning.js';
 import {DRACOLoader} from 'three/addons/loaders/DRACOLoader.js';
 import {MeshoptDecoder} from 'three/addons/libs/meshopt_decoder.module.js';
@@ -56,12 +57,12 @@ async function carModel(c,npc,cb){
 let pT=0,pD=0,spawnId=0;const prog=p=>{pT=p},frame=()=>new Promise(r=>requestAnimationFrame(()=>r()));
 
 // ---------- State ----------
-let msgT=45,frameN=0;const TR=CARS.filter(c=>c.npc!==false);let eff=null,map=null,root=null,ground=null,chunks=[],player=null,pcfg=null,traffic=[],job=null,beam=null,camMode=0,paused=false,playing=false,snapCb=null,lvl=1;
+let msgT=45,frameN=0,droneOn=false,prevCam=0;const TR=CARS.filter(c=>c.npc!==false);let eff=null,map=null,root=null,ground=null,chunks=[],player=null,pcfg=null,traffic=[],job=null,beam=null,camMode=0,paused=false,playing=false,snapCb=null,lvl=1;
 const P={x:0,z:0,h:0,v:0,s:0,hc:0,ay:0},M={cx:0,cz:0,B:100,gy:0};
 
 // Finds the real road/ground height: ray-cast down on a grid, take the most common surface level (roads/ground cover the most area), spawn on it.
 function findGround(root,b){const rc=new THREE.Raycaster(),o=new THREE.Vector3(),d=new THREE.Vector3(0,-1,0),pts=[],N=17,sp=Math.min(M.B*.6,350);
- for(let i=0;i<N;i++)for(let j=0;j<N;j++){const x=M.cx+(i/(N-1)-.5)*2*sp,z=M.cz+(j/(N-1)-.5)*2*sp;rc.firstHitOnly=true;rc.set(o.set(x,b.max.y+20,z),d);const L=Ground.list(x,z),h=L&&(Ground.prep(L),rc.intersectObjects(L,false)[0]);if(h)pts.push({x,z,y:h.point.y,r:h})}
+ for(let i=0;i<N;i++)for(let j=0;j<N;j++){const x=M.cx+(i/(N-1)-.5)*2*sp,z=M.cz+(j/(N-1)-.5)*2*sp;const h=Ground.hit(x,z,b.max.y+20,0,b.max.y-b.min.y+40);if(h)pts.push({x,z,y:h.point.y,r:h})}
  if(!pts.length)return{y:b.min.y+.02,x:M.cx,z:M.cz};
  const bins={};pts.forEach(p=>{(bins[Math.round(p.y*2)]??=[]).push(p)});let best=null,bn=-1;
  for(const k of Object.keys(bins).map(Number)){const c=[...(bins[k-1]||[]),...bins[k],...(bins[k+1]||[])];if(c.length>bn){bn=c.length;best=c}}
@@ -78,12 +79,12 @@ async function startMap(id){
   root=raw.clone(true);let b=new THREE.Box3().setFromObject(root),sz=b.getSize(new THREE.Vector3());
   root.scale.setScalar(map.extent/Math.max(sz.x,sz.z));sc.add(root);root.updateMatrixWorld(true);b=new THREE.Box3().setFromObject(root);sz=b.getSize(new THREE.Vector3());
   M.cx=(b.min.x+b.max.x)/2;M.cz=(b.min.z+b.max.z)/2;M.B=Math.max(sz.x,sz.z)/2*.96;await Promise.race([Ground.ready,new Promise(r=>setTimeout(r,3000))]);Ground.build(root);const G=findGround(root,b);M.gy=map.groundY??G.y;M.sx=G.x;M.sz=G.z;M.sy=G.y;
-  ground=new THREE.Mesh(new THREE.PlaneGeometry(M.B*4,M.B*4),new THREE.MeshLambertMaterial({color:0x555a55}));ground.rotation.x=-Math.PI/2;ground.position.set(M.cx,M.gy-.06,M.cz);ground.receiveShadow=true;sc.add(ground);
+  ground=new THREE.Mesh(new THREE.PlaneGeometry(M.B*4,M.B*4),new THREE.MeshLambertMaterial({color:0x555a55}));ground.rotation.x=-Math.PI/2;ground.position.set(M.cx,b.min.y-4,M.cz);sc.add(ground);
   prog(.96);await frame();
   let nodes=root.children;while(nodes.length===1&&nodes[0].children.length>1)nodes=nodes[0].children;
   chunks=nodes.map(n=>{const bb=new THREE.Box3().setFromObject(n);return{n,c:bb.getCenter(new THREE.Vector3()),r:bb.getSize(new THREE.Vector3()).length()/2}});
   if(player)sc.remove(player);player=pm;sc.add(player);refreshEff();applyLook();
-  Object.assign(P,{x:G.x,z:G.z,y:G.y,vy:0,pt:0,h:0,hc:0,v:0,s:0});job=null;if(beam)beam.visible=false;lvl=Save.level();
+  Object.assign(P,{x:G.x,z:G.z,y:G.y,vy:0,pt:0,h:0,hc:0,v:0,s:0});Quests.reset();lvl=Save.level();
   traffic.forEach(n=>sc.remove(n.m));traffic=[];
   prog(1);await new Promise(r=>setTimeout(r,260));            // let the bar visibly reach 100%
   show(null);$('#hud').style.display='block';$('#ctl').style.display='flex';playing=true;paused=false;
@@ -92,12 +93,12 @@ async function startMap(id){
 async function syncTraffic(){const my=++spawnId,n=Math.round(S.traffic*30);while(traffic.length>n)sc.remove(traffic.pop().m);
  while(traffic.length<n&&my===spawnId){const i=traffic.length,m=await carModel(TR[i%TR.length],true);if(my!==spawnId)return;sc.add(m);const o={m,i,v:0,cv:0,a:0,at:0,tg:0,off:false,wait:0,pass:false,st:0};traffic.push(o);place(o,true);await new Promise(r=>setTimeout(r,60))}}
 // ---- traffic AI: cars only exist on road cells (asphalt colour + flat + free overhead), keep to the right lane, turn at junctions, U-turn at dead ends ----
-function edges(x,z,y,a){const f=sg=>{let miss=0;for(let d=1;d<=8;d++){const q=Ground.road(x+sg*Math.cos(a)*d,z-sg*Math.sin(a)*d,y);if(!q.ok){if(++miss>=2)return d-1}else miss=0}return 8};return{r:f(1),l:f(-1)}}
+function edges(x,z,y,a){const f=sg=>{let miss=0;for(let d=1;d<=8;d++){const q=Ground.road(x-sg*Math.cos(a)*d,z+sg*Math.sin(a)*d,y);if(!q.ok){if(++miss>=2)return d-1}else miss=0}return 8};return{r:f(1),l:f(-1)}}
 function think(n){const p=n.m.position,y=p.y,a=n.a,hr=Ground.h(p.x,p.z,y,1.1,12);if(hr===null||hr-y>1.1||y-hr>5){place(n);return}n.tg=hr;
  const ok=(ang,dist)=>{const q=Ground.road(p.x+Math.sin(ang)*dist,p.z+Math.cos(ang)*dist,y);return q.ok&&Math.abs(q.y-y)<.25*dist+.5};
  let best=null;for(const d of Math.random()<.5?[0,.3,-.3,.6,-.6,1.57,-1.57]:[0,-.3,.3,-.6,.6,-1.57,1.57])if(ok(a+d,9)&&ok(a+d,15)){best=d;break}
  if(best===null){if(ok(a+Math.PI,9))best=Math.PI;else{place(n);return}}
- const e=edges(p.x,p.z,y,a+(Math.abs(best)<1?best:0));let steer=0;const w=e.l+e.r;if(Math.abs(best)<1&&w>3&&w<22)steer=clamp((e.r-w*.28)*.08,-.35,.35);   // right-lane centring
+ const e=edges(p.x,p.z,y,a+(Math.abs(best)<1?best:0));let steer=0;const w=e.l+e.r;if(Math.abs(best)<1&&w>3&&w<22)steer=-clamp((e.r-w*.28)*.08,-.35,.35);   // right-lane centring
  if(best===0&&w>18&&Math.random()<.04){const t=[1.57,-1.57].find(d=>ok(a+d,9)&&ok(a+d,15));if(t!==undefined)best=t}                                          // random turns at wide junctions
  n.at=a+best+steer;let lim=n.v;const sa=Math.sin(a),ca=Math.cos(a);
  for(const o of traffic){if(o===n||o.off)continue;const dx=o.m.position.x-p.x,dz=o.m.position.z-p.z,f=dx*sa+dz*ca;if(f>0&&f<11&&Math.abs(dx*ca-dz*sa)<2.4)lim=Math.min(lim,f<5?0:o.cv*.9)}
@@ -108,15 +109,18 @@ function place(n,init){n.pass=false;
   if(!r0.ok||Math.abs(r0.y-P.y)>9)continue;let ba=0,bl=0;
   for(let k=0;k<12;k++){const a=k*.5236+Math.random()*.1;let l=0;for(let q=10;q<=50;q+=10){const c=Ground.road(x+Math.sin(a)*q,z+Math.cos(a)*q,r0.y);if(c.ok&&Math.abs(c.y-r0.y)<.3*q+.5)l=q;else break}if(l>bl){bl=l;ba=a}}
   if(bl<30)continue;const e=edges(x,z,r0.y,ba),w=e.l+e.r,off=w>3?clamp(e.r-w*.28,-4,4):0;
-  n.a=n.at=ba;n.v=n.cv=n.lim=(9+Math.random()*7)*S.tspeed;n.st=0;n.m.position.set(x+Math.cos(ba)*off,r0.y,z-Math.sin(ba)*off);n.m.rotation.y=ba;n.tg=r0.y;n.off=false;n.m.visible=true;return}
+  n.a=n.at=ba;n.v=n.cv=n.lim=(9+Math.random()*7)*S.tspeed;n.st=0;n.m.position.set(x-Math.cos(ba)*off,r0.y,z+Math.sin(ba)*off);n.m.rotation.y=ba;n.tg=r0.y;n.off=false;n.m.visible=true;return}
  n.off=true;n.wait=.4;n.m.visible=false}
 
 // ---------- Input ----------
-const keys={};addEventListener('keydown',e=>{if(e.target.tagName==='INPUT')return;keys[e.code]=1;if(e.code==='KeyH')Snd.play('horn');if(e.code==='KeyC')camMode=(camMode+1)%3});addEventListener('keyup',e=>keys[e.code]=0);
+const keys={};addEventListener('keydown',e=>{if(e.target.tagName==='INPUT')return;keys[e.code]=1;if(e.code==='KeyH')Snd.play('horn');if(e.code==='KeyC')setCam((camMode+1)%4)});addEventListener('keyup',e=>keys[e.code]=0);
 const inp={l:0,r:0,gas:0,brk:0,axis:0};let holding=false,wr=0,tiltRaw=null,tiltN=null,tiltF=0;
 const mkEl=(p,id,cls,html='')=>{const e=document.createElement('div');if(id)e.id=id;if(cls)e.className=cls;e.innerHTML=html;p.append(e);return e};
 function btn(p,cls,txt,k){const b=mkEl(p,'','pb '+cls,txt);b.onpointerdown=e=>{e.preventDefault();b.setPointerCapture(e.pointerId);inp[k]=1;b.classList.add('on')};b.onpointerup=b.onpointercancel=()=>{inp[k]=0;b.classList.remove('on')}}
 const IC=p=>`<svg viewBox="0 0 24 24">${p}</svg>`,I_L=IC('<path d="M14.5 5.5L8 12l6.5 6.5"/>'),I_R=IC('<path d="M9.5 5.5L16 12l-6.5 6.5"/>'),I_GAS=IC('<path d="M6 11l6-6 6 6M6 18l6-6 6 6"/>'),I_BRK=IC('<rect x="6.5" y="6.5" width="11" height="11" rx="2.5"/>');
+const I_UP=IC('<path d="M5.5 14.5L12 8l6.5 6.5"/>'),I_DN=IC('<path d="M5.5 9.5L12 16l6.5-6.5"/>'),I_UPA=IC('<path d="M12 19V6M6.5 11.5L12 6l5.5 5.5"/>'),I_DNA=IC('<path d="M12 5v13M6.5 12.5L12 18l5.5-5.5"/>'),
+ I_YL=IC('<path d="M3 12a9 9 0 109-9 9 9 0 00-6.4 2.6L3 8M3 3v5h5"/>'),I_YR=IC('<path d="M21 12a9 9 0 11-9-9 9 9 0 016.4 2.6L21 8M21 3v5h-5"/>'),
+ I_EYE=IC('<path d="M2 12s3.6-7 10-7 10 7 10 7-3.6 7-10 7S2 12 2 12z"/><circle cx="12" cy="12" r="3"/>'),I_X=IC('<path d="M6 6l12 12M18 6L6 18"/>');
 function buildCtl(){const L=$('#left'),Rr=$('#right');L.innerHTML=Rr.innerHTML='';inp.axis=0;wr=0;tiltN=null;
  btn(Rr,'pedal brk',I_BRK,'brk');btn(Rr,'pedal gas',I_GAS,'gas');
  if(S.ctrl==='arrows'){btn(L,'',I_L,'l');btn(L,'',I_R,'r')}
@@ -144,7 +148,7 @@ function update(dt){
  const gas=keys.ArrowUp||keys.KeyW||inp.gas,brk=keys.ArrowDown||keys.KeyS||inp.brk,top=eff.top/3.6,kmh=Math.abs(P.v)*3.6;
  if(brk&&P.v>14&&!P.bk){Snd.play('brake',.8);P.bk=1}if(!brk)P.bk=0;
  // longitudinal: power-limited accel (P/mv) capped by traction, quadratic drag to hit top speed
- if(dt){let a=0;
+ if(dt&&!droneOn){let a=0;
   if(gas&&P.v>=-.3)a=Math.min(2.5+eff.torque/eff.weight*12,eff.hp*745*.8/(eff.weight*Math.max(P.v,3.5)))*(1-Math.pow(P.v/top,2));
   else if(brk&&P.v>.5)a=-9*eff.brake;else if(brk)a=-3*(1+P.v/-8);          // brake, then reverse (max ~8 m/s)
   else if(gas)a=9;                                                // gas while rolling backwards = brake
@@ -158,11 +162,15 @@ function update(dt){
   if(Math.abs(P.v)>.3&&(Ground.fast||frameN%3===0)&&Ground.wall(P.x,P.y,P.z,fx*sg,fz*sg,pcfg.len/2+Math.abs(P.v)*dt+.2,player.userData.wid/2-.15)){crashFx(Math.min(1,Math.abs(P.v)/12));P.v*=-.2;mv=false}   // solid walls/buildings
   if(mv){P.x+=fx*P.v*dt;P.z+=fz*P.v*dt}
   if(Math.abs(P.x-M.cx)>M.B||Math.abs(P.z-M.cz)>M.B){P.x=clamp(P.x,M.cx-M.B,M.cx+M.B);P.z=clamp(P.z,M.cz-M.B,M.cz+M.B);P.v*=.5;crashFx(.5)}
-  const hl=pcfg.len*.38,hF=Ground.h(P.x+fx*hl,P.z+fz*hl,P.y,.9,40),hR=Ground.h(P.x-fx*hl,P.z-fz*hl,P.y,.9,40),gT=hF??hR;     // follow the real surface
-  if(gT!==null){if(hF!==null&&hR!==null)P.pt+=(Math.atan2(hF-hR,hl*2)-P.pt)*Math.min(1,dt*10);
-   const tY=hF!==null&&hR!==null?(hF+hR)/2:gT;if(tY>=P.y-.3||P.y-tY<.35){P.y+=(tY-P.y)*Math.min(1,dt*16);P.vy=0}else{P.vy-=25*dt;P.y+=P.vy*dt;if(P.y<tY){P.y=tY;P.vy=0}}}
+  const hl=pcfg.len*.38,hF=Ground.h(P.x+fx*hl,P.z+fz*hl,P.y,.9,40,.55),hR=Ground.h(P.x-fx*hl,P.z-fz*hl,P.y,.9,40,.55),hC=Ground.h(P.x,P.z,P.y,.9,40,.55);let grounded=false;
+  const hs=[hF,hR,hC].filter(v=>v!==null);
+  if(hs.length){const tY=hC!==null?hC:(hF!==null&&hR!==null?(hF+hR)/2:hs[0]);
+   if(hF!==null&&hR!==null&&Math.abs(hF-hR)<hl*2.4)P.pt+=(Math.atan2(hF-hR,hl*2)-P.pt)*Math.min(1,dt*10);
+   if(tY>=P.y-.3||P.y-tY<.35){P.y+=(tY-P.y)*Math.min(1,dt*16);P.vy=0;grounded=true}else{P.vy-=25*dt;P.y+=P.vy*dt;if(P.y<tY){P.y=tY;P.vy=0;grounded=true}}}
   else{P.vy-=25*dt;P.y+=P.vy*dt}
-  if(P.y<M.sy-60){P.x=M.sx;P.z=M.sz;P.y=M.sy;P.v=0;P.vy=0;P.pt=0}} // invisible walls
+  if(grounded){P.air=0;if((P.gt=(P.gt||0)+dt)>.4){P.gt=0;P.lg={x:P.x,y:P.y,z:P.z,h:P.h}}}                                                       // remember last safe spot
+  else if((P.air=(P.air||0)+dt)>1.6&&P.lg){P.x=P.lg.x;P.y=P.lg.y+.3;P.z=P.lg.z;P.h=P.lg.h;P.v=0;P.vy=0;P.air=0}                                   // fell through / off the map: back to last safe spot
+  if(P.y<M.sy-80){P.x=M.sx;P.z=M.sz;P.y=M.sy;P.v=0;P.vy=0;P.pt=0}} // invisible walls
  player.position.set(P.x,P.y,P.z);player.rotation.x=-P.pt;player.rotation.y=P.h;player.rotation.z=clamp(-P.ay*.006,-.05,.05);
  const sn=80/smSize;V.set(Math.round(P.x/sn)*sn,P.y,Math.round(P.z/sn)*sn);sun.target.position.copy(V);sun.position.set(V.x+80,P.y+120,V.z+40); // texel-snapped shadows (no shimmer)
  for(const c of chunks)c.n.visible=V.set(c.c.x-P.x,0,c.c.z-P.z).length()-c.r<map.cullDist;
@@ -175,32 +183,59 @@ function update(dt){
   if(dt){if(n.cv<.3){if((n.st+=dt)>6){place(n);continue}}else n.st=0}
   const dx=ps.x-P.x,dz=ps.z-P.z,d=Math.hypot(dx,dz);
   if(d>300||Math.abs(ps.x-M.cx)>M.B||Math.abs(ps.z-M.cz)>M.B){place(n);continue}
-  const near=Math.abs(ps.y-P.y)<2.5;
+  const near=!droneOn&&Math.abs(ps.y-P.y)<2.5;
   if(d<2.7&&dt&&near){const nx=-dx/(d||1),nz=-dz/(d||1);P.x+=nx*(2.7-d);P.z+=nz*(2.7-d);P.v*=.55;crashFx()}
   else if(near&&!n.pass&&P.v>12){const lat=dx*Math.cos(P.h)-dz*Math.sin(P.h),lon=dx*Math.sin(P.h)+dz*Math.cos(P.h);
    if(Math.abs(lat)<2.8&&Math.abs(lon)<3){n.pass=true;const c=Math.abs(lat)<1.9,v=c?1200:600;addMoney(v);Snd.play(c?'cash':'pass');toast((c?t('near')+' ':'')+'+'+v+' '+t('cur'))}}}
- if(dt&&kmh>60)addMoney(kmh*dt*.5);if(dt&&(msgT-=dt)<=0){msgT=70+Math.random()*80;phone.incoming()}
- if(job){job.t-=dt;const d=Math.hypot(job.x-P.x,job.z-P.z);$('#jobp').textContent=`📦 ${Math.round(d)} m · ${Math.max(0,Math.ceil(job.t))} s`;
-  if(d<12){addMoney(job.r);toast(t('done')+' +'+job.r);endJob()}else if(job.t<=0){toast(t('fail'));endJob()}}
- $('#spd').textContent=Math.round(kmh);$('#spdw').style.setProperty('--p',Math.min(100,kmh/eff.top*100));$('#mon').textContent=fmt(Save.data.money)+' · '+t('lvl')+' '+Save.level();$('#xpb i').style.width=(Math.sqrt(Save.data.xp/100)%1)*100+'%';
+ if(dt&&kmh>60)addMoney(kmh*dt*.5);Quests.update(dt);if(dt&&(msgT-=dt)<=0){msgT=70+Math.random()*80;phone.incoming()}
+ $('#spd').textContent=Math.round(kmh);$('#spdw').style.setProperty('--p',Math.min(100,kmh/eff.top*100));$('#mon').textContent=fmt(Save.data.money)+' · '+t('lvl')+' '+Save.level();$('#xpb i').style.width=(Math.sqrt(Save.data.xp/40)%1)*100+'%';
  Snd.engine(kmh,!!gas,eff.top,dt>0);
  // cameras: heading-damped chase (no stitching), frame-rate independent smoothing
  const len=pcfg.len,h=player.userData.h;P.hc+=angd(P.h,P.hc)*(1-Math.exp(-5*dt));const sx=Math.sin(P.h),sz=Math.cos(P.h);
- if(camMode===0){const dist=len*1.5+3.2+kmh*.012,cx=Math.sin(P.hc),cz=Math.cos(P.hc);V.set(P.x-cx*dist,P.y+h+1.1+len*.12,P.z-cz*dist);cam.position.lerp(V,dt?1-Math.exp(-11*dt):1);cam.lookAt(P.x+sx*3,P.y+h*.8,P.z+sz*3);cam.fov+=(62+kmh*.12-cam.fov)*Math.min(1,dt*3)}
+ if(droneOn){droneCam(dt)}
+ else if(camMode===0){const dist=len*1.5+3.2+kmh*.012,cx=Math.sin(P.hc),cz=Math.cos(P.hc);V.set(P.x-cx*dist,P.y+h+1.1+len*.12,P.z-cz*dist);cam.position.lerp(V,dt?1-Math.exp(-11*dt):1);cam.lookAt(P.x+sx*3,P.y+h*.8,P.z+sz*3);cam.fov+=(62+kmh*.12-cam.fov)*Math.min(1,dt*3)}
  else if(camMode===1){cam.position.set(P.x+sz*.38+sx*.1,P.y+h*.82,P.z-sx*.38+sz*.1);cam.lookAt(P.x+sx*12-P.s*sz*2,P.y+h*.8,P.z+sz*12+P.s*sx*2);cam.fov=70}
+ else if(camMode===3){cam.position.set(fc.x,fc.y,fc.z);const cp=Math.cos(fc.pitch);cam.lookAt(fc.x+Math.sin(fc.yaw)*cp,fc.y+Math.sin(fc.pitch),fc.z+Math.cos(fc.yaw)*cp);cam.fov=65}
  else{const a=performance.now()/5000;V.set(P.x+Math.sin(a)*(len*2+4),P.y+1.6+Math.sin(a*.7),P.z+Math.cos(a)*(len*2+4));cam.position.lerp(V,dt?1-Math.exp(-3*dt):1);cam.lookAt(P.x,P.y+h*.6,P.z);cam.fov=55}
- cam.updateProjectionMatrix();player.visible=camMode!==1;
- const nl=Save.level();if(nl>lvl){lvl=nl;Snd.play('levelup');toast('⬆ '+t('lvl')+' '+nl)}}
-function addMoney(v){Save.data.money+=v;Save.data.xp+=v/400}
+ cam.updateProjectionMatrix();player.visible=droneOn||camMode!==1;
+ const nl=Save.level();if(nl>lvl){lvl=nl;Snd.play('levelup');const bn=15000*nl;Save.data.money+=bn;toast('⬆ '+t('lvl')+' '+nl+' · +'+bn+' '+t('cur'))}}
+function addMoney(v,xp=v/60){Save.data.money+=v;Save.data.xp+=xp}   // fast progression: 600 DA pass = 10 XP, level 2 at 40 XP
 function toast(s){const e=$('#toast');e.textContent=s;clearTimeout(e._t);e._t=setTimeout(()=>e.textContent='',1400);Save.write()}
-function startJob(){const a=Math.random()*TAU,d=250+Math.random()*250;job={x:clamp(P.x+Math.sin(a)*d,M.cx-M.B,M.cx+M.B),z:clamp(P.z+Math.cos(a)*d,M.cz-M.B,M.cz+M.B),r:15000,t:40+d/8};
- if(!beam){beam=new THREE.Mesh(new THREE.CylinderGeometry(3,3,90,16,1,true),new THREE.MeshBasicMaterial({color:0xffd84a,transparent:true,opacity:.35,side:THREE.DoubleSide,fog:false}));sc.add(beam)}beam.visible=true;beam.position.set(job.x,P.y+45,job.z)}
-function endJob(){job=null;beam.visible=false;$('#jobp').textContent=''}
+function startJob(){Quests.start('cargo')}
 
+// ---- Free camera (mode 4 of the camera button / C key): 1 finger = look, 2 fingers = pan + pinch zoom, mouse: drag look, right-drag pan, wheel zoom ----
+const fc={x:0,y:0,z:0,yaw:0,pitch:0},ptr=new Map();let pc=null,pd=0;
+function setCam(m){camMode=m;if(m===3){cam.getWorldDirection(V);fc.x=cam.position.x;fc.y=cam.position.y;fc.z=cam.position.z;fc.yaw=Math.atan2(V.x,V.z);fc.pitch=Math.asin(clamp(V.y,-1,1));toast('🎥 '+t('freecam'))}}
+function fmove(r,u,f){const ry=fc.yaw,cp=Math.cos(fc.pitch);fc.x+=-Math.cos(ry)*r+Math.sin(ry)*cp*f;fc.z+=Math.sin(ry)*r+Math.cos(ry)*cp*f;fc.y+=u+Math.sin(fc.pitch)*f}
+{const cv=R.domElement;
+ cv.addEventListener('pointerdown',e=>{if(camMode!==3&&!droneOn)return;cv.setPointerCapture(e.pointerId);ptr.set(e.pointerId,{x:e.clientX,y:e.clientY});pc=null});
+ const up=e=>{ptr.delete(e.pointerId);pc=null};cv.addEventListener('pointerup',up);cv.addEventListener('pointercancel',up);
+ cv.addEventListener('pointermove',e=>{const p=ptr.get(e.pointerId);if(!p||(camMode!==3&&!droneOn))return;const ox=p.x,oy=p.y;p.x=e.clientX;p.y=e.clientY;
+  if(ptr.size===1){const dx=p.x-ox,dy=p.y-oy;if(e.buttons&2&&!droneOn)fmove(-dx*.04,dy*.04,0);else{const T=droneOn?drone:fc;T.yaw-=dx*.005;T.pitch=clamp(T.pitch-dy*.005,-1.5,1.5)}}
+  else if(ptr.size===2&&!droneOn){const[a,b]=[...ptr.values()],cx=(a.x+b.x)/2,cy=(a.y+b.y)/2,d=Math.hypot(a.x-b.x,a.y-b.y);if(pc){fmove(-(cx-pc.x)*.04,(cy-pc.y)*.04,(d-pd)*.08)}pc={x:cx,y:cy};pd=d}});
+ cv.addEventListener('wheel',e=>{if(camMode===3){e.preventDefault();fmove(0,0,-e.deltaY*.05)}},{passive:false});cv.addEventListener('contextmenu',e=>e.preventDefault())}
+// ---- Drone mode (phone app): car is anchored, free-flying camera, only drone controls + one exit button are shown ----
+const drone={x:0,y:0,z:0,yaw:0,pitch:-.3,vx:0,vy:0,vz:0},dk={};let eyeOn=false,hiT=0;
+function buildDrone(){const d=$('#drone'),b=(k,ic)=>`<div class="pb db" data-k="${k}">${ic}</div>`,e='<div></div>';
+ d.innerHTML=`<div class="dg dl">${e+b('f',I_UP)+e+b('l',I_L)+e+b('r',I_R)+e+b('b',I_DN)+e}</div><div class="dg dr">${e+b('u',I_UPA)+e+b('yl',I_YL)+e+b('yr',I_YR)+e+b('d',I_DNA)+e}</div>
+  <button id="dEye" class="ib">${I_EYE}</button><button id="dExit" class="dexit">${I_X}<span data-t="exitdrone"></span></button>`;
+ d.querySelectorAll('.db').forEach(x=>{const k=x.dataset.k;x.onpointerdown=ev=>{ev.preventDefault();x.setPointerCapture(ev.pointerId);dk[k]=1;x.classList.add('on')};x.onpointerup=x.onpointercancel=()=>{dk[k]=0;x.classList.remove('on')}});
+ $('#dEye').onclick=()=>{eyeOn=!eyeOn;d.classList.toggle('hi',eyeOn);$('#dEye').classList.toggle('act',eyeOn)};$('#dExit').onclick=stopDrone;setLang(S.lang)}
+function flashHi(){const d=$('#drone');d.classList.add('hi');clearTimeout(hiT);hiT=setTimeout(()=>{if(!eyeOn)d.classList.remove('hi')},2500)}
+function startDrone(){if(!playing)return;droneOn=true;prevCam=camMode;P.v=0;paused=false;const sx=Math.sin(P.h),sz=Math.cos(P.h);
+ Object.assign(drone,{x:P.x-sx*7,y:P.y+7,z:P.z-sz*7,yaw:P.h,pitch:-.4,vx:0,vy:0,vz:0});document.body.classList.add('drone');$('#drone').classList.remove('hi');eyeOn=false;$('#dEye').classList.remove('act');flashHi();toast('🛸 '+t('dronehint'))}
+function stopDrone(){droneOn=false;for(const k in dk)dk[k]=0;document.body.classList.remove('drone');camMode=prevCam}
+function droneCam(dt){const K=k=>keys[k]?1:0,fwd=(dk.f||K('KeyW')||K('ArrowUp')?1:0)-(dk.b||K('KeyS')||K('ArrowDown')?1:0),str=(dk.r||K('KeyD')||K('ArrowRight')?1:0)-(dk.l||K('KeyA')||K('ArrowLeft')?1:0),
+  up=(dk.u||K('KeyR')?1:0)-(dk.d||K('KeyF')?1:0),yw=(dk.yl||K('KeyQ')?1:0)-(dk.yr||K('KeyE')?1:0);
+ drone.yaw+=yw*1.6*dt;const sy=Math.sin(drone.yaw),cy=Math.cos(drone.yaw),k=Math.min(1,dt*5),sp=24;
+ drone.vx+=((sy*fwd-cy*str)*sp-drone.vx)*k;drone.vz+=((cy*fwd+sy*str)*sp-drone.vz)*k;drone.vy+=(up*14-drone.vy)*k;
+ drone.x=clamp(drone.x+drone.vx*dt,M.cx-M.B,M.cx+M.B);drone.z=clamp(drone.z+drone.vz*dt,M.cz-M.B,M.cz+M.B);drone.y=Math.min(P.y+150,drone.y+drone.vy*dt);
+ const g=Ground.h(drone.x,drone.z,drone.y,0,300);if(g!==null)drone.y=Math.max(drone.y,g+1.5);                       // never flies through the ground
+ cam.position.set(drone.x,drone.y,drone.z);const cp=Math.cos(drone.pitch);cam.lookAt(drone.x+Math.sin(drone.yaw)*cp,drone.y+Math.sin(drone.pitch),drone.z+Math.cos(drone.yaw)*cp);cam.fov=75}
 // ---------- Menus ----------
 function show(id){document.querySelectorAll('.scr').forEach(s=>s.classList.toggle('on',s.id===id))}
 function menu(){const live=playing;paused=live;$('#hud').style.display=$('#ctl').style.display='none';$('#bRes').style.display=live?'':'none';$('#stat').textContent=fmt(Save.data.money)+' · '+t('lvl')+' '+Save.level();show('menu');if(map&&root&&playing)syncTraffic()}
-const refreshEff=()=>{eff=stats(pcfg,Save.data.tune[pcfg.id]);Snd.setCar(pcfg.id)};let cd=0;function crashFx(v=1){if(performance.now()-cd>600){cd=performance.now();Snd.play('crash',v)}}
+const refreshEff=()=>{eff=stats(pcfg,Save.data.tune[pcfg.id]);Snd.setCar(pcfg.id)};let cd=0;function crashFx(v=1){if(performance.now()-cd>600){cd=performance.now();Snd.play('crash',v);Quests.crash()}}
 function applyLook(){const tn=Save.data.tune[pcfg.id]||{};if(tn.paint)player.traverse(o=>{if(o.isMesh&&/body|paint|exterior/i.test(o.material.name||'')){if(!o.userData.pc){o.material=o.material.clone();o.userData.pc=1}o.material.color.set(tn.paint)}});
  let n=player.getObjectByName('neon');if(tn.neon&&!n){n=new THREE.PointLight(0x00e5ff,6,8);n.name='neon';n.position.set(0,.25,0);player.add(n)}if(n)n.visible=!!tn.neon}
 async function swap(){sc.remove(player);player=await carModel(pcfg,false);sc.add(player);refreshEff();applyLook()}
@@ -225,11 +260,11 @@ document.querySelectorAll('.x').forEach(b=>b.onclick=menu);
 const bind=(id,k,fn,num=true,ev='oninput')=>$(id)[ev]=e=>{const v=e.target;S[k]=v.type==='checkbox'?v.checked:num?+v.value:v.value;Save.write();fn&&fn()};
 bind('#sLang','lang',()=>{setLang(S.lang);sync()},false,'onchange');bind('#sCtrl','ctrl',buildCtl,false,'onchange');bind('#sTr','traffic');bind('#sTs','tspeed');
 bind('#sMa','master',()=>{phone.vol();Snd.vol()});bind('#sMu','music',()=>phone.vol());bind('#sSf','sfx',()=>{Snd.vol();Snd.play('horn',.5)});bind('#sQ','quality',gfx,false,'onchange');bind('#sRes','scale',gfx);bind('#sFps','fps',null,true,'onchange');bind('#sSh','shadows',gfx,false,'onchange');bind('#sPo','post',gfx,false,'onchange');
-$('#bCam').onclick=()=>camMode=(camMode+1)%3;$('#bMenu').onclick=menu;$('#bPh').onclick=()=>phone.toggle();
+$('#bCam').onclick=()=>setCam((camMode+1)%4);$('#bMenu').onclick=menu;$('#bPh').onclick=()=>phone.toggle();
 
 // ---------- Boot ----------
-phone=initPhone({notify:s=>toast('📩 '+s),ctx:()=>({n:Save.data.name,m:Save.data.money,l:Save.level(),car:pcfg.name,tuned:Object.values(Save.data.tune[pcfg.id]||{}).filter(v=>typeof v==='number').reduce((a,b)=>a+b,0)}),S,money:()=>Save.data.money,level:()=>Save.level(),pause:p=>paused=p,snap:cb=>snapCb=cb,startJob});
-Snd.init(S);Snd.bindGesture(()=>phone.autoplay());
+phone=initPhone({quests:Quests,drone:startDrone,notify:s=>toast('📩 '+s),ctx:()=>({n:Save.data.name,m:Save.data.money,l:Save.level(),car:pcfg.name,tuned:Object.values(Save.data.tune[pcfg.id]||{}).filter(v=>typeof v==='number').reduce((a,b)=>a+b,0)}),S,money:()=>Save.data.money,level:()=>Save.level(),pause:p=>paused=p,snap:cb=>snapCb=cb,startJob});
+Quests.init({scene:sc,P,M,Ground,Snd,toast,addMoney,level:()=>Save.level(),hud:$('#jobp')});buildDrone();R.domElement.addEventListener('pointerdown',()=>{if(droneOn)flashHi()});Snd.init(S);Snd.bindGesture(()=>phone.autoplay());
 for(const ev of['contextmenu','selectstart','gesturestart'])document.addEventListener(ev,e=>{if(!(e.target.closest&&e.target.closest('input,textarea')))e.preventDefault()},{passive:false});   // no Copy/Look Up menu, no pinch-zoomdocument.addEventListener('click',e=>{if(e.target.closest('button,.app,.row'))Snd.play('click',.6)},true);$('#bHorn').onclick=()=>Snd.play('horn');
 (async()=>{pcfg=CARS.find(c=>c.id===Save.data.car);refreshEff();setLang(S.lang);gfx();buildCtl();menu();tick();   // menu is shown immediately
  const f=['maps/'+MAPS[0].file,...CARS.filter(c=>Save.data.owned.includes(c.id)).map(c=>'cars/'+c.file)];            // background preload (map first)
