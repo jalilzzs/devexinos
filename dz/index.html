@@ -1,0 +1,42 @@
+<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,user-scalable=no,viewport-fit=cover">
+<meta name="theme-color" content="#0a7b3e"><title>Dzair Drive</title><link rel="stylesheet" href="css/style.css">
+<script type="importmap">{"imports":{"three":"https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js","three/addons/":"https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/"}}</script></head><body>
+<div id="vig"></div><div id="flash"></div>
+<div id="load" class="scr on"><h1>🇩🇿 Dzair Drive</h1><div class="flag"></div><div id="lbar"><i></i></div><div data-t="loading"></div></div>
+<div id="menu" class="scr"><h1>🇩🇿 Dzair Drive</h1><div class="flag"></div><div id="stat"></div>
+ <button id="bRes" data-t="resume" style="display:none"></button><button id="bPlay" data-t="play"></button><button id="bGar" data-t="garage"></button><button id="bSet" class="alt" data-t="settings"></button></div>
+<div id="maps" class="scr"><h2 data-t="map"></h2><div id="mapl" class="grid"></div><button class="x alt" data-t="close"></button></div>
+<div id="gar" class="scr"><h2 data-t="garage"></h2><div id="stat2"></div><div id="carl"></div><button class="x alt" data-t="close"></button></div>
+<div id="tune" class="scr"><h2>🔧 <span data-t="tune"></span></h2><div id="stat3"></div><div id="tunel"></div><button class="alt" id="tback" data-t="garage"></button></div>
+<div id="set" class="scr"><h2 data-t="settings"></h2>
+<section class="box"><h3 data-t="s_audio"></h3>
+ <label class="card"><span data-t="master"></span><input id="sMa" type="range" min="0" max="1" step="0.05"></label>
+ <label class="card"><span data-t="music"></span><input id="sMu" type="range" min="0" max="1" step="0.05"></label>
+ <label class="card"><span data-t="sfx"></span><input id="sSf" type="range" min="0" max="1" step="0.05"></label>
+ <div class="card" id="sndinfo" style="font-size:12px;opacity:.85"></div>
+</section>
+<section class="box"><h3 data-t="s_gfx"></h3>
+ <label class="card"><span data-t="quality"></span><select id="sQ"><option value="low">Low</option><option value="med">Medium</option><option value="high">High</option></select></label>
+ <label class="card"><span data-t="res"></span><input id="sRes" type="range" min="0.5" max="1" step="0.1"></label>
+ <label class="card"><span data-t="fps"></span><select id="sFps"><option value="30">30</option><option value="45">45</option><option value="60">60</option></select></label>
+ <label class="card"><span data-t="shadows"></span><input id="sSh" type="checkbox"></label>
+ <label class="card"><span data-t="post"></span><input id="sPo" type="checkbox"></label>
+</section>
+<section class="box"><h3 data-t="s_ctrl"></h3>
+ <label class="card"><span data-t="ctrl"></span><select id="sCtrl"><option value="arrows">◀ ▶ Arrows</option><option value="joystick">Joystick</option><option value="wheel">Wheel</option><option value="tilt">Tilt</option></select></label>
+</section>
+<section class="box"><h3 data-t="s_traffic"></h3>
+ <label class="card"><span data-t="traffic"></span><input id="sTr" type="range" min="0" max="1" step="0.1"></label>
+ <label class="card"><span data-t="tspeed"></span><input id="sTs" type="range" min="0.5" max="1.5" step="0.1"></label>
+</section>
+<section class="box"><h3 data-t="s_lang"></h3>
+ <label class="card"><span data-t="lang"></span><select id="sLang"><option value="ar">عربي</option><option value="fr">Français</option><option value="en">English</option><option value="ru">Русский</option></select></label>
+</section>
+<button class="x" data-t="close"></button></div>
+<div id="hud"><div id="tl"><div id="mon"></div><div class="bar" id="xpb"><i></i></div></div><div id="jobp"></div><div id="toast"></div>
+ <div id="spdw"><span id="spd">0</span> <small>km/h</small></div>
+ <div id="tr"><button class="ib" id="bHorn"><svg viewBox="0 0 24 24"><path d="M4 10v4h3l7 4V6L7 10z"/><path d="M17 9.5a4 4 0 010 5M19.5 7a7.5 7.5 0 010 10"/></svg></button><button class="ib" id="bPh"><svg viewBox="0 0 24 24"><rect x="7" y="2.5" width="10" height="19" rx="2.5"/><path d="M11 18.5h2"/></svg></button><button class="ib" id="bCam"><svg viewBox="0 0 24 24"><path d="M4 8h3l2-3h6l2 3h3v11H4z"/><circle cx="12" cy="13" r="3.5"/></svg></button><button class="ib" id="bMenu"><svg viewBox="0 0 24 24"><path d="M4 7h16M4 12h16M4 17h16"/></svg></button></div></div>
+<div id="drone"></div>
+<div id="ctl"><div id="left" class="pad"></div><div id="right" class="pad"></div></div>
+<div id="phone"><div id="ps"><span id="pt"></span><span id="pm"></span></div><div id="pb"></div><div id="pnav"><button class="alt" id="pHome">⌂</button></div></div>
+<script type="module" src="js/main.js"></script></body></html>
